@@ -66,7 +66,7 @@ Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침�
 ```bash
 read -r CHECK_TEXT
 git grep -nF -- "$CHECK_TEXT" HEAD -- . || true
-APP='https://choi-bujang-secret-vault-six.vercel.app'
+APP='https://skt-aleph-defense.vercel.app'
 { curl -fsS "$APP/"; curl -fsS "$APP/data.json"; } | grep -nF -- "$CHECK_TEXT" || true
 ```
 
@@ -77,6 +77,13 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 ```
 
 환경변수와 DB가 준비된 2단계에서는 `4`가 나오면 화면이 읽는 공개 API가 네 건을 반환한다는 뜻입니다. 이것은 **현재 단계의 남은 공개 접근 약점**이지 보호 완료의 증거가 아닙니다.
+
+## 최근 검증 기록
+
+- GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 검색한 결과: **0건**.
+- 현재 production의 `/data.json`: `notes: []`로 확인.
+- Supabase `public.learning_notes`: 네 행, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개로 확인.
+- 현재 production의 `/api/notes`: `SUPABASE_SECRET_KEY`가 아직 Vercel에 등록되지 않아 `503 NOTES_BACKEND_NOT_CONFIGURED`. 따라서 **현재 화면의 카드 네 개 표시까지는 아직 완료로 기록하지 않습니다.** 실제 키 값은 채팅이나 Git에 넣지 말고 Vercel의 비밀 입력란에서 직접 등록한 뒤 새 배포로 재검증합니다.
 
 ## 과거 노출에 대한 기록
 
