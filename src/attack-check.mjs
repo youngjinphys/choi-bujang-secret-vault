@@ -35,29 +35,35 @@ export async function runAttackChecks(config) {
   const staticResponse = await fetch(new URL('/data.json', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
+  const staticCache = staticResponse.headers.get('cache-control') || '';
+  const staticNoStore = /\bno-store\b/iu.test(staticCache);
   let staticEmpty = false;
   if (staticResponse.ok) {
     try {
       const data = await staticResponse.json();
       staticEmpty = Array.isArray(data.notes) && data.notes.length === 0
-        && !Object.hasOwn(data, 'sampleMarker');
+        && !Object.hasOwn(data, 'sampleMarker') && staticNoStore;
     } catch {}
   }
 
   const identityResponse = await fetch(new URL('/aleph.json', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
+  const identityCache = identityResponse.headers.get('cache-control') || '';
+  const identityNoStore = /\bno-store\b/iu.test(identityCache);
   let identityClean = false;
   if (identityResponse.ok) {
     try {
       const data = await identityResponse.json();
-      identityClean = data?.step === 2 && !Object.hasOwn(data, 'sampleMarker');
+      identityClean = data?.step === 2 && !Object.hasOwn(data, 'sampleMarker') && identityNoStore;
     } catch {}
   }
 
   const apiResponse = await fetch(new URL('/api/notes', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
+  const apiCache = apiResponse.headers.get('cache-control') || '';
+  const apiNoStore = /\bno-store\b/iu.test(apiCache);
   let apiCount = null;
   if (apiResponse.ok) {
     try {
@@ -67,13 +73,14 @@ export async function runAttackChecks(config) {
   }
 
   return [
-    { attackId: 'static_note_copy_removed', expected: '정적 /data.json에는 1단계 표시와 메모 본문이 없음',
-      observed: staticEmpty ? '정적 /data.json에 1단계 표시가 없고 notes 배열이 비어 있음'
-        : `정적 파일 확인 실패, 1단계 표시 또는 notes가 남아 있음 (HTTP ${staticResponse.status})` },
-    { attackId: 'step1_marker_removed', expected: '2단계 /aleph.json에는 1단계 확인 표시가 없음',
-      observed: identityClean ? '2단계 배포 식별 응답에 1단계 확인 표시가 없음'
-        : `배포 식별 응답 확인 실패 또는 1단계 표시가 남아 있음 (HTTP ${identityResponse.status})` },
-    { attackId: 'public_notes_api_remains', expected: '2단계에서는 /api/notes 공개 주소 약점을 기록',
-      observed: apiCount === null ? `공개 API가 자료 목록을 반환하지 않음 (HTTP ${apiResponse.status})` : `비로그인 공개 API가 ${apiCount}건을 반환함` },
+    { attackId: 'static_note_copy_removed', expected: '정적 /data.json은 메모·1단계 표시 없이 notes=[]이고 no-store',
+      observed: staticEmpty ? '정적 /data.json은 notes=[]·표시 없음·Cache-Control=no-store'
+        : `정적 /data.json 검증 실패 (HTTP ${staticResponse.status}, Cache-Control=${staticCache || '없음'})` },
+    { attackId: 'step1_marker_removed', expected: '2단계 /aleph.json은 1단계 표시 없이 no-store',
+      observed: identityClean ? '2단계 /aleph.json은 표시 없음·Cache-Control=no-store'
+        : `/aleph.json 검증 실패 (HTTP ${identityResponse.status}, Cache-Control=${identityCache || '없음'})` },
+    { attackId: 'public_notes_api_remains', expected: '비로그인 /api/notes는 4건을 반환하고 no-store이며 공개 주소 약점이 남음',
+      observed: apiCount === null ? `공개 API가 자료 목록을 반환하지 않음 (HTTP ${apiResponse.status})`
+        : `비로그인 /api/notes가 ${apiCount}건 반환·Cache-Control=${apiNoStore ? 'no-store' : (apiCache || '없음')}·공개 주소 유지` },
   ];
 }

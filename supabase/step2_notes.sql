@@ -15,5 +15,6 @@ grant select on table public.learning_notes to service_role;
 commit;
 
 -- Intentionally no SELECT policy for anon/authenticated.
+-- Step 2 still exposes training rows through the unauthenticated Vercel /api/notes function; do not store real private data yet.
 -- owner_id is deliberately not a foreign key to auth.users in step 2.
 -- Insert the four training rows in Supabase SQL Editor only; do not commit their plaintext.

@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { validateBundleNotes } from './bundle-notes-validation.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const git = (...args) => execFileSync('git', ['-C', root, ...args], {
@@ -65,9 +66,7 @@ try {
       || !/^[a-z][a-z0-9_.-]{0,79}$/iu.test(item)) || new Set(policyRules).size !== policyRules.length) {
     fail('src/decider.mjs의 RULE_IDS 이름과 중복을 확인해 주세요.');
   }
-  if (typeof notes.explanation !== 'string' || notes.explanation.trim().length < 10) {
-    fail('bundle-notes.json의 explanation에 이번 단계에서 한 일을 세 줄로 적어 주세요.');
-  }
+  const explanation = validateBundleNotes(notes, config.step);
   const checkerUrl = pathToFileURL(join(root, 'src', 'attack-check.mjs'));
   const { runAttackChecks } = await import(checkerUrl.href);
   if (typeof runAttackChecks !== 'function') fail('src/attack-check.mjs가 runAttackChecks를 내보내야 합니다.');
@@ -90,7 +89,7 @@ try {
   const bundle = {
     schema: 'aleph.defense.submission.v2', step: config.step, commit, repoUrl,
     changedFiles, policyRules,
-    attackAttempts, explanation: notes.explanation.trim(), blockedAt: notes.blockedAt ?? null,
+    attackAttempts, explanation, blockedAt: notes.blockedAt ?? null,
     identityProvider: config.identityProvider ?? null, allowedRoutes: config.allowedRoutes ?? [],
     originalApiUrl: config.originalApiUrl ?? null, restoreRoute: config.restoreRoute ?? null,
   };

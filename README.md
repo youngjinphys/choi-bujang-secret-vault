@@ -59,6 +59,25 @@ npm run build -- --local
 
 Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침합니다. 정상 상태에서는 `/`에 네 카드가 보이고 `/data.json`의 `notes`는 빈 배열이며 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 합니다.
 
+## 제출 묶음 설명 `bundle-notes.json`
+
+`bundle-notes.json`은 제출 직전에 로컬에서 만들며 Git에는 커밋하지 않습니다. `explanation`은 **10~1500자, 빈 줄을 제외하고 정확히 세 줄**이어야 합니다. 2단계에서는 아래 네 사실이 세 줄 안에 모두 들어가야 합니다.
+
+- 정적 `data.json`의 자료를 코드 밖 Supabase/DB로 옮겼다는 사실
+- 브라우저가 `/api/notes` 서버 함수를 사용하고 서버 전용 secret은 브라우저에 두지 않는다는 사실
+- `/api/notes` 자체는 아직 비로그인 공개라는 남은 약점
+- 과거 Git 커밋과 이전 Vercel 배포의 노출은 해소되지 않았다는 한계
+
+예시는 실제 키나 메모 본문을 넣지 않고 다음처럼 작성합니다.
+
+```json
+{
+  "explanation": "정적 data.json의 자료 본문을 코드 밖 Supabase DB로 이동했습니다.\n브라우저는 /api/notes Vercel 서버 함수만 호출하고 SUPABASE_SECRET_KEY는 서버 전용으로 사용합니다.\n/api/notes는 아직 비로그인 공개이며 과거 Git 커밋과 이전 Vercel 배포의 노출도 해소되지 않고 남아 있습니다."
+}
+```
+
+`npm run bundle`은 위 형식과 필수 의미를 검사합니다. 저장점용 README-only 커밋을 다시 추가한 뒤 bundle을 만들면 `changedFiles`가 README 하나로 축소되므로, **이번 2단계 최종 구현 커밋을 마지막 커밋으로 둔 상태에서 bundle을 생성합니다.**
+
 ## 현재 GitHub 최신 파일과 현재 배포 정적 파일 검색
 
 실제 문장을 README나 명령 기록에 다시 남기지 않기 위해 검사할 한 문장을 셸 변수로만 입력합니다.
@@ -83,7 +102,7 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 2026-10-05 기준으로 저장소 문구가 아니라 실제 GitHub HEAD·Supabase·Vercel production을 각각 다시 확인했습니다.
 
 - GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 각각 검색한 결과: **0건**.
-- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다. 2단계 정적 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 하며, 자기 점검도 이를 별도로 검사합니다.
+- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다. 2단계 정적 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 하며 두 JSON 응답은 `Cache-Control: no-store`로 확인합니다.
 - Supabase `public.learning_notes`: **4행**, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개, 공개 읽기 정책 0개로 확인했습니다.
 - Vercel production에는 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`가 등록되어 있으며, 키 값은 이 문서·응답·로그에 기록하지 않습니다.
 - 현재 production의 `/api/notes`는 인증 없이 **HTTP 200으로 가상 자료 4건을 반환**합니다. 화면은 이 공개 API를 통해 네 카드를 읽습니다. 이는 2단계의 의도된 남은 약점이며 **3단계 전까지 실제 개인정보나 비밀 자료를 넣으면 안 됩니다.**
@@ -91,7 +110,7 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 
 ## 2단계 저장점 점검 요약
 
-1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 예. 최신 HEAD 및 실제 production 배포의 `/data.json`은 빈 배열(`notes: []`)만 반환하며, `/data.json`과 `/aleph.json`에서 1단계 `sampleMarker`(`SAMPLE_NOTE_1`)가 완전히 제거되었음을 직접 확인했습니다.
+1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 예. 최신 HEAD 및 실제 production 배포의 `/data.json`은 빈 배열(`notes: []`)만 반환하며, `/data.json`과 `/aleph.json`에서 1단계 `sampleMarker` 값이 완전히 제거되었음을 직접 확인했습니다.
 2. **화면은 계속 동작하는가?**: 예. 브라우저에서 `/api/notes` 서버 함수를 호출하여 4장의 카드를 정상적으로 렌더링함을 직접 브라우저 및 API로 확인했습니다.
 3. **옛 공개 이력의 한계를 설명했는가?**: 예. 과거 1단계 Git 커밋 및 이전 Vercel 배포 URL에는 여전히 가상 메모가 남아있을 수 있으므로 과거 노출이 완전히 해소된 것이 아님을 명시했습니다.
 

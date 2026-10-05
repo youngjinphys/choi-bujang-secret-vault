@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deploymentIdentity } from '../scripts/deployment-identity.mjs';
 import { runAttackChecks } from '../src/attack-check.mjs';
+import { validateBundleNotes } from '../scripts/bundle-notes-validation.mjs';
 
 const config = {
   step: 1,
@@ -74,12 +75,12 @@ test('step 2 attack checks reject static remnants and keep the public API weakne
   try {
     globalThis.fetch = async (url) => {
       const path = new URL(String(url)).pathname;
-      if (path === '/data.json') return new Response(JSON.stringify({ notes: [] }), { status: 200 });
+      if (path === '/data.json') return new Response(JSON.stringify({ notes: [] }), { status: 200, headers: { 'cache-control': 'no-store' } });
       if (path === '/aleph.json') {
-        return new Response(JSON.stringify({ schema: 'aleph.defense.deployment.v1', step: 2 }), { status: 200 });
+        return new Response(JSON.stringify({ schema: 'aleph.defense.deployment.v1', step: 2 }), { status: 200, headers: { 'cache-control': 'no-store' } });
       }
       if (path === '/api/notes') {
-        return new Response(JSON.stringify({ notes: [{}, {}, {}, {}] }), { status: 200 });
+        return new Response(JSON.stringify({ notes: [{}, {}, {}, {}] }), { status: 200, headers: { 'cache-control': 'no-store' } });
       }
       return new Response('', { status: 404 });
     };
@@ -88,7 +89,21 @@ test('step 2 attack checks reject static remnants and keep the public API weakne
     assert.match(results[0].observed, /표시가 없고/u);
     assert.match(results[1].observed, /표시가 없음/u);
     assert.match(results[2].observed, /4건/u);
+    assert.match(results[2].observed, /no-store/u);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test('step 2 bundle explanation requires the three-line security story', () => {
+  const valid = [
+    '정적 data.json의 자료 본문을 코드 밖 Supabase DB로 이동했습니다.',
+    '브라우저는 /api/notes Vercel 서버 함수만 호출하고 SUPABASE_SECRET_KEY는 서버 전용으로 사용합니다.',
+    '/api/notes는 아직 비로그인 공개이며 과거 Git 커밋과 이전 Vercel 배포의 노출도 해소되지 않고 남아 있습니다.',
+  ].join('\n');
+  assert.equal(validateBundleNotes({ explanation: valid }, 2), valid);
+  assert.throws(() => validateBundleNotes({ explanation: 'Supabase로 옮겼습니다.\n서버 함수를 붙였습니다.\n공개 API입니다.' }, 2), /필수 내용 누락/u);
+  assert.throws(() => validateBundleNotes({ explanation: '한 줄 설명만 있습니다.' }, 2), /정확히 세 줄/u);
+  assert.throws(() => validateBundleNotes({ explanation: '가'.repeat(1501) + '\n나\n다' }, 2), /1500자 이하/u);
 });

@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const noStore = (response) => response.setHeader('Cache-Control', 'no-store');
+const noStore = (response) => {
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('CDN-Cache-Control', 'no-store');
+  response.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+};
 
 export default async function handler(request, response) {
   noStore(response);
