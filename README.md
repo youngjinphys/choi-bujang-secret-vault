@@ -91,7 +91,7 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 
 ## 2단계 저장점 점검 요약
 
-1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 최신 HEAD는 `/data.json`을 빈 배열(`notes: []`)로 만들고 `/data.json`·`/aleph.json`에서 1단계 `sampleMarker`를 제거하도록 구성합니다. production에서는 배포 뒤 이 두 응답을 다시 확인합니다.
+1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 예. 최신 HEAD 및 실제 production 배포의 `/data.json`은 빈 배열(`notes: []`)만 반환하며, `/data.json`과 `/aleph.json`에서 1단계 `sampleMarker`(`SAMPLE_NOTE_1`)가 완전히 제거되었음을 직접 확인했습니다.
 2. **화면은 계속 동작하는가?**: 예. 브라우저에서 `/api/notes` 서버 함수를 호출하여 4장의 카드를 정상적으로 렌더링함을 직접 브라우저 및 API로 확인했습니다.
 3. **옛 공개 이력의 한계를 설명했는가?**: 예. 과거 1단계 Git 커밋 및 이전 Vercel 배포 URL에는 여전히 가상 메모가 남아있을 수 있으므로 과거 노출이 완전히 해소된 것이 아님을 명시했습니다.
 
