@@ -7,7 +7,7 @@
 1. `supabase/step2_notes.sql`은 `owner_id uuid`를 포함한 `public.learning_notes`를 만들고 RLS를 켭니다. `owner_id`에는 `auth.users` 외래키를 걸지 않습니다.
 2. `anon`과 `authenticated`에는 테이블 권한을 주지 않으며 SELECT 정책도 만들지 않습니다.
 3. `/api/notes`만 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽어 `id`, `title`, `content`만 반환합니다. 키 값은 응답·로그·브라우저 파일에 넣지 않습니다.
-4. `/`은 `/api/notes`를 호출해 카드를 그립니다. 정적 `/data.json`의 `notes`는 빈 배열입니다.
+4. `/`은 `/api/notes`를 호출해 카드를 그립니다. 2단계 정적 `/data.json`은 빈 `notes` 배열만 두며, `/data.json`과 `/aleph.json` 어디에도 1단계 `sampleMarker`를 내보내지 않습니다.
 5. **남은 약점:** 2단계의 `/api/notes` 주소 자체에는 아직 사용자 인증이 없습니다. 서버 키가 숨겨져 있어도 누구나 이 공개 함수를 호출해 자료를 읽을 수 있으므로 다음 단계의 접근 통제가 필요합니다.
 
 ## Supabase SQL Editor에서 실행
@@ -57,7 +57,7 @@ Vercel Project Settings의 환경변수에 다음 **이름만** 등록합니다.
 npm run build -- --local
 ```
 
-Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침합니다. 정상 상태에서는 `/`에 네 카드가 보이고 `/data.json`의 `notes`는 빈 배열입니다.
+Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침합니다. 정상 상태에서는 `/`에 네 카드가 보이고 `/data.json`의 `notes`는 빈 배열이며 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 합니다.
 
 ## 현재 GitHub 최신 파일과 현재 배포 정적 파일 검색
 
@@ -67,7 +67,7 @@ Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침�
 read -r CHECK_TEXT
 git grep -nF -- "$CHECK_TEXT" HEAD -- . || true
 APP='https://skt-aleph-defense.vercel.app'
-{ curl -fsS "$APP/"; curl -fsS "$APP/data.json"; } | grep -nF -- "$CHECK_TEXT" || true
+{ curl -fsS "$APP/"; curl -fsS "$APP/data.json"; curl -fsS "$APP/aleph.json"; } | grep -nF -- "$CHECK_TEXT" || true
 ```
 
 두 검색 모두 출력이 없어야 합니다. 공개 API의 남은 약점은 본문을 출력하지 않고 건수만 확인합니다.
@@ -83,7 +83,7 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 2026-10-05 기준으로 저장소 문구가 아니라 실제 GitHub HEAD·Supabase·Vercel production을 각각 다시 확인했습니다.
 
 - GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 각각 검색한 결과: **0건**.
-- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다.
+- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다. 2단계 정적 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 하며, 자기 점검도 이를 별도로 검사합니다.
 - Supabase `public.learning_notes`: **4행**, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개, 공개 읽기 정책 0개로 확인했습니다.
 - Vercel production에는 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`가 등록되어 있으며, 키 값은 이 문서·응답·로그에 기록하지 않습니다.
 - 현재 production의 `/api/notes`는 인증 없이 **HTTP 200으로 가상 자료 4건을 반환**합니다. 화면은 이 공개 API를 통해 네 카드를 읽습니다. 이는 2단계의 의도된 남은 약점이며 **3단계 전까지 실제 개인정보나 비밀 자료를 넣으면 안 됩니다.**
@@ -91,7 +91,7 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 
 ## 2단계 저장점 점검 요약
 
-1. **새 정적 파일과 최신 저장소에 메모가 없는가?**: 예. 최신 GitHub HEAD 및 `/data.json`에서 가상 메모 본문이 완전히 제거되어 빈 배열(`notes: []`)만 제공됩니다.
+1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 최신 HEAD는 `/data.json`을 빈 배열(`notes: []`)로 만들고 `/data.json`·`/aleph.json`에서 1단계 `sampleMarker`를 제거하도록 구성합니다. production에서는 배포 뒤 이 두 응답을 다시 확인합니다.
 2. **화면은 계속 동작하는가?**: 예. 브라우저에서 `/api/notes` 서버 함수를 호출하여 4장의 카드를 정상적으로 렌더링함을 직접 브라우저 및 API로 확인했습니다.
 3. **옛 공개 이력의 한계를 설명했는가?**: 예. 과거 1단계 Git 커밋 및 이전 Vercel 배포 URL에는 여전히 가상 메모가 남아있을 수 있으므로 과거 노출이 완전히 해소된 것이 아님을 명시했습니다.
 

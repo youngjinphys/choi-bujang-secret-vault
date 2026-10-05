@@ -2,7 +2,6 @@
   "step": 2,
   "repoUrl": "https://github.com/youngjinphys/choi-bujang-secret-vault",
   "publicAppUrl": "https://skt-aleph-defense.vercel.app",
-  "sampleMarker": "SAMPLE_NOTE_1",
   "judgeIssuer": "https://aleph-judge-production.up.railway.app/defense/judge",
   "identityProvider": null,
   "allowedRoutes": [],
