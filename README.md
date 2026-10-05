@@ -80,10 +80,14 @@ curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).
 
 ## 최근 검증 기록
 
-- GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 검색한 결과: **0건**.
-- 현재 production의 `/data.json`: `notes: []`로 확인.
-- Supabase `public.learning_notes`: 네 행, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개로 확인.
-- 현재 production의 `/api/notes`: `SUPABASE_SECRET_KEY`가 아직 Vercel에 등록되지 않아 `503 NOTES_BACKEND_NOT_CONFIGURED`. 따라서 **현재 화면의 카드 네 개 표시까지는 아직 완료로 기록하지 않습니다.** 실제 키 값은 채팅이나 Git에 넣지 말고 Vercel의 비밀 입력란에서 직접 등록한 뒤 새 배포로 재검증합니다.
+2026-10-05 기준으로 저장소 문구가 아니라 실제 GitHub HEAD·Supabase·Vercel production을 각각 다시 확인했습니다.
+
+- GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 각각 검색한 결과: **0건**.
+- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다.
+- Supabase `public.learning_notes`: **4행**, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개, 공개 읽기 정책 0개로 확인했습니다.
+- Vercel production에는 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`가 등록되어 있으며, 키 값은 이 문서·응답·로그에 기록하지 않습니다.
+- 현재 production의 `/api/notes`는 인증 없이 **HTTP 200으로 가상 자료 4건을 반환**합니다. 화면은 이 공개 API를 통해 네 카드를 읽습니다. 이는 2단계의 의도된 남은 약점이며 **3단계 전까지 실제 개인정보나 비밀 자료를 넣으면 안 됩니다.**
+- 1단계 커밋과 그때 생성된 Vercel 배포는 여전히 접근 가능하고, 옛 `/data.json`에서 가상 메모 본문을 읽을 수 있음을 확인했습니다. 따라서 **과거 공개 노출은 해소되지 않았습니다.**
 
 ## 과거 노출에 대한 기록
 
