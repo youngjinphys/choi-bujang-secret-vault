@@ -1,123 +1,70 @@
-# BYTE BACK 방어전 · 2단계 자료를 코드 밖으로 옮기기
+# BYTE BACK 방어전 · 3단계 진짜 로그인을 붙입니다
 
-현재 단계는 **2단계**입니다. 1단계의 정적 `data.json` 공개를 끝내고, 자료 본문은 Supabase의 `public.learning_notes` 테이블로 옮깁니다. 브라우저는 Supabase에 직접 접속하지 않고 Vercel 서버 함수 `/api/notes`만 호출합니다.
+현재 단계는 **3단계**입니다. 2단계의 Supabase 학습용 DB를 그대로 사용하면서 Supabase Auth 이메일·비밀번호 로그인/로그아웃을 붙이고, Vercel 자료 API가 틀의 `src/verify-login.mjs`로 Bearer 토큰을 검증합니다.
 
 ## 현재 작동 구조
 
-1. `supabase/step2_notes.sql`은 `owner_id uuid`를 포함한 `public.learning_notes`를 만들고 RLS를 켭니다. `owner_id`에는 `auth.users` 외래키를 걸지 않습니다.
-2. `anon`과 `authenticated`에는 테이블 권한을 주지 않으며 SELECT 정책도 만들지 않습니다.
-3. `/api/notes`만 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽어 `id`, `title`, `content`만 반환합니다. 키 값은 응답·로그·브라우저 파일에 넣지 않습니다.
-4. `/`은 `/api/notes`를 호출해 카드를 그립니다. 2단계 정적 `/data.json`은 빈 `notes` 배열만 두며, `/data.json`과 `/aleph.json` 어디에도 1단계 `sampleMarker`를 내보내지 않습니다.
-5. **남은 약점:** 2단계의 `/api/notes` 주소 자체에는 아직 사용자 인증이 없습니다. 서버 키가 숨겨져 있어도 누구나 이 공개 함수를 호출해 자료를 읽을 수 있으므로 다음 단계의 접근 통제가 필요합니다.
+1. 브라우저는 공개용 Supabase Project URL과 publishable key로 공식 `@supabase/supabase-js`의 `signInWithPassword()`, `signOut()`, `getSession()` 흐름을 사용합니다.
+2. `/api/notes`와 `/api/notes/:id`는 요청의 `Authorization: Bearer ...`만 `src/verify-login.mjs`에 넘겨 검증하며 브라우저가 보낸 userId·role은 사용하지 않습니다.
+3. 토큰이 없거나 검증에 실패하면 자료 없이 HTTP 401로 거부합니다. 정상 로그인 토큰은 검증된 `userId`를 얻습니다.
+4. POST는 검증된 `userId`를 `owner_id`로 저장하고, UUID `id`가 없으면 서버가 생성합니다. GET/POST/PUT/DELETE CRUD를 지원합니다.
+5. **의도된 3단계 약점:** 아직 소유자 권한 검사는 하지 않습니다. 인증된 B가 A의 메모 UUID를 알면 한 건 GET·PUT·DELETE가 가능하며 이것은 4단계에서 막습니다.
 
-## Supabase SQL Editor에서 실행
+## API 계약
 
-`supabase/step2_notes.sql`을 SQL Editor에서 실행합니다. 그 다음 Table Editor 또는 아래 확인 쿼리로 `owner_id`와 RLS를 확인합니다.
+- `GET /api/notes` → 로그인 후 메모 배열 `[{id,title,body}, ...]`
+- `POST /api/notes` body `{id?,title,body}` → `{id}`
+- `GET /api/notes/:id` → `{id,title,body}`, 없으면 404
+- `PUT /api/notes/:id` body `{title,body}` → 수정된 `{id,title,body}`
+- `DELETE /api/notes/:id` → `{id}`, 이후 같은 GET은 404
+- 모든 자료 API는 로그인 토큰 없이는 401
 
-```sql
-select column_name, data_type
-from information_schema.columns
-where table_schema = 'public' and table_name = 'learning_notes'
-order by ordinal_position;
+`aleph.config.json`의 `allowedRoutes`에는 실제 경로인 `/api/notes`, `/api/notes/:id`를 기록합니다.
 
-select relrowsecurity
-from pg_class
-where oid = 'public.learning_notes'::regclass;
+## 로그인 발급자
 
-select grantee, privilege_type
-from information_schema.role_table_grants
-where table_schema = 'public'
-  and table_name = 'learning_notes'
-  and grantee in ('anon', 'authenticated');
-```
+`aleph.config.json.identityProvider`에는 Supabase Auth 공개 검증 정보만 기록합니다.
 
-마지막 쿼리는 행이 없어야 합니다. 네 건의 학습용 자료는 **SQL Editor에서만** 입력하고 그 실제 문장을 저장소 파일에 복사하지 않습니다.
+- issuer: 현재 프로젝트의 `/auth/v1`
+- audience: `authenticated`
+- jwksUrl: issuer 아래 `/.well-known/jwks.json`
 
-```sql
-insert into public.learning_notes (owner_id, title, content)
-values
-  (null, '<첫 번째 제목>', '<첫 번째 본문>'),
-  (null, '<두 번째 제목>', '<두 번째 본문>'),
-  (null, '<세 번째 제목>', '<세 번째 본문>'),
-  (null, '<네 번째 제목>', '<네 번째 본문>');
-```
+서버 전용 `SUPABASE_SECRET_KEY`는 기존 Vercel 비밀 환경변수에서만 읽으며 브라우저·응답·로그·Git에 넣지 않습니다. 브라우저에 들어가는 publishable key는 공개용 키입니다.
 
-## Vercel 환경변수
+## DB 상태
 
-Vercel Project Settings의 환경변수에 다음 **이름만** 등록합니다. 실제 값은 Vercel의 비밀 입력란에 직접 넣고 Git, 채팅, 로그에 복사하지 않습니다.
+`public.learning_notes.id`는 3단계 API 계약에 맞춰 UUID로 전환했습니다. 기존 가상 메모 4건은 보존했고, `owner_id uuid`·RLS 활성 상태와 `anon`/`authenticated` 직접 DB 권한 차단도 유지합니다.
 
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY` — 서버 전용 secret/service key. 브라우저용 변수가 아닙니다.
+`supabase/step3_auth_crud.sql`은 같은 최종 스키마를 재현합니다. 3단계에서는 owner 기반 RLS 정책을 일부러 추가하지 않습니다. Vercel 서버가 secret으로 DB를 사용하며 로그인만 검사하고, 소유자 권한 검사는 4단계 과제입니다.
 
-값이 없으면 `/api/notes`는 503으로 실패하며 키를 대신 노출하지 않습니다.
+## 실행과 확인
 
-## 다시 실행
+로컬 정적 빌드 확인:
 
 ```bash
 npm run build -- --local
 ```
 
-Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침합니다. 정상 상태에서는 `/`에 네 카드가 보이고 `/data.json`의 `notes`는 빈 배열이며 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 합니다.
+Supabase Dashboard → **Authentication → Users**에서 실습용 A 계정(필요하면 B 계정도)을 직접 만들고 비밀번호는 채팅·Git에 남기지 않습니다. 현재 DB에는 Auth 사용자가 없으므로 계정을 만든 뒤 실제 로그인 성공 시험을 진행합니다.
 
-## 제출 묶음 설명 `bundle-notes.json`
+정상 결과:
+- 로그아웃 상태에서는 로그인 폼만 보이고 자료 영역은 숨겨집니다.
+- A 로그인 후 자료 목록과 추가·수정·삭제 UI가 나타납니다.
+- POST로 만든 메모의 `owner_id`는 서버가 검증한 A의 사용자 UUID입니다.
+- 삭제 후 같은 `GET /api/notes/:id`는 404입니다.
 
-`bundle-notes.json`은 제출 직전에 로컬에서 만들며 Git에는 커밋하지 않습니다. `explanation`은 **10~1500자, 빈 줄을 제외하고 정확히 세 줄**이어야 합니다. 2단계에서는 아래 네 사실이 세 줄 안에 모두 들어가야 합니다.
+거부되어야 할 결과:
+- 시크릿 창이나 Authorization 헤더 없는 `GET /api/notes`와 `GET /api/notes/:id`는 자료 없이 401입니다.
+- 임의 userId·role을 요청 본문에 넣어도 서버 신원으로 인정하지 않습니다.
 
-- 정적 `data.json`의 자료를 코드 밖 Supabase/DB로 옮겼다는 사실
-- 브라우저가 `/api/notes` 서버 함수를 사용하고 서버 전용 secret은 브라우저에 두지 않는다는 사실
-- `/api/notes` 자체는 아직 비로그인 공개라는 남은 약점
-- 과거 Git 커밋과 이전 Vercel 배포의 노출은 해소되지 않았다는 한계
+## 4단계로 남기는 허점
 
-예시는 실제 키나 메모 본문을 넣지 않고 다음처럼 작성합니다.
+3단계는 **authentication만 구현하고 authorization은 아직 구현하지 않습니다.** 따라서 로그인한 B가 A 메모의 UUID를 알면 한 건 조회·수정·삭제가 가능합니다. 이 동작은 이번 단계에서 숨기거나 고치지 않고 4단계의 BOLA/IDOR 개선 대상으로 명시합니다.
 
-```json
-{
-  "explanation": "정적 data.json의 자료 본문을 코드 밖 Supabase DB로 이동했습니다.\n브라우저는 /api/notes Vercel 서버 함수만 호출하고 SUPABASE_SECRET_KEY는 서버 전용으로 사용합니다.\n/api/notes는 아직 비로그인 공개이며 과거 Git 커밋과 이전 Vercel 배포의 노출도 해소되지 않고 남아 있습니다."
-}
-```
+## 과거 노출 기록
 
-`npm run bundle`은 위 형식과 필수 의미를 검사합니다. 저장점용 README-only 커밋을 다시 추가한 뒤 bundle을 만들면 `changedFiles`가 README 하나로 축소되므로, **이번 2단계 최종 구현 커밋을 마지막 커밋으로 둔 상태에서 bundle을 생성합니다.**
-
-## 현재 GitHub 최신 파일과 현재 배포 정적 파일 검색
-
-실제 문장을 README나 명령 기록에 다시 남기지 않기 위해 검사할 한 문장을 셸 변수로만 입력합니다.
-
-```bash
-read -r CHECK_TEXT
-git grep -nF -- "$CHECK_TEXT" HEAD -- . || true
-APP='https://skt-aleph-defense.vercel.app'
-{ curl -fsS "$APP/"; curl -fsS "$APP/data.json"; curl -fsS "$APP/aleph.json"; } | grep -nF -- "$CHECK_TEXT" || true
-```
-
-두 검색 모두 출력이 없어야 합니다. 공개 API의 남은 약점은 본문을 출력하지 않고 건수만 확인합니다.
-
-```bash
-curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).notes.length))"
-```
-
-환경변수와 DB가 준비된 2단계에서는 `4`가 나오면 화면이 읽는 공개 API가 네 건을 반환한다는 뜻입니다. 이것은 **현재 단계의 남은 공개 접근 약점**이지 보호 완료의 증거가 아닙니다.
-
-## 최근 검증 기록
-
-2026-10-05 기준으로 저장소 문구가 아니라 실제 GitHub HEAD·Supabase·Vercel production을 각각 다시 확인했습니다.
-
-- GitHub 최신 HEAD에서 1단계 가상 메모 본문 네 문장을 각각 검색한 결과: **0건**.
-- 현재 production의 `/` 정적 HTML과 `/data.json`에는 가상 메모 본문이 없고, `/data.json`은 `notes: []`입니다. 2단계 정적 `/data.json`과 `/aleph.json`에는 1단계 `sampleMarker`가 없어야 하며 두 JSON 응답은 `Cache-Control: no-store`로 확인합니다.
-- Supabase `public.learning_notes`: **4행**, `owner_id uuid`, RLS 활성화, 외래키 0개, `anon`·`authenticated` 테이블 권한 0개, 공개 읽기 정책 0개로 확인했습니다.
-- Vercel production에는 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`가 등록되어 있으며, 키 값은 이 문서·응답·로그에 기록하지 않습니다.
-- 현재 production의 `/api/notes`는 인증 없이 **HTTP 200으로 가상 자료 4건을 반환**합니다. 화면은 이 공개 API를 통해 네 카드를 읽습니다. 이는 2단계의 의도된 남은 약점이며 **3단계 전까지 실제 개인정보나 비밀 자료를 넣으면 안 됩니다.**
-- 1단계 커밋과 그때 생성된 Vercel 배포는 여전히 접근 가능하고, 옛 `/data.json`에서 가상 메모 본문을 읽을 수 있음을 확인했습니다. 따라서 **과거 공개 노출은 해소되지 않았습니다.**
-
-## 2단계 저장점 점검 요약
-
-1. **새 정적 파일과 최신 저장소에 1단계 잔재와 메모가 없는가?**: 예. 최신 HEAD 및 실제 production 배포의 `/data.json`은 빈 배열(`notes: []`)만 반환하며, `/data.json`과 `/aleph.json`에서 1단계 `sampleMarker` 값이 완전히 제거되었음을 직접 확인했습니다.
-2. **화면은 계속 동작하는가?**: 예. 브라우저에서 `/api/notes` 서버 함수를 호출하여 4장의 카드를 정상적으로 렌더링함을 직접 브라우저 및 API로 확인했습니다.
-3. **옛 공개 이력의 한계를 설명했는가?**: 예. 과거 1단계 Git 커밋 및 이전 Vercel 배포 URL에는 여전히 가상 메모가 남아있을 수 있으므로 과거 노출이 완전히 해소된 것이 아님을 명시했습니다.
-
-## 과거 노출에 대한 기록
-
-현재 HEAD와 새 배포의 정적 파일에서 문장을 지워도 **옛 공개 Git 커밋이나 옛 Vercel 배포가 접근 가능한 동안 과거 노출이 해소됐다고 기록하면 안 됩니다.** 이번 단계가 증명하는 것은 새 정적 파일과 현재 GitHub 최신 파일에서 본문을 제거했다는 것뿐입니다. 과거 커밋·배포의 제거 또는 접근 불가 여부는 별도로 확인해야 합니다.
+1~2단계의 옛 Git 커밋과 옛 Vercel 배포는 별도 이력입니다. 현재 3단계에서 로그인 보호를 붙여도 과거 공개 배포가 자동으로 사라진 것은 아니므로 과거 노출까지 해소됐다고 기록하지 않습니다.
 
 ## 코딩 도구 규칙
 
-후속 작업 전에는 [AGENTS.md](AGENTS.md)를 먼저 확인합니다. 실제 키·토큰·개인키·실제 개인정보는 코드, Git, 로그, 제출 묶음에 넣지 않습니다. `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 운영 심판 판정이 아닙니다.
+후속 작업 전에는 [AGENTS.md](AGENTS.md)를 먼저 확인합니다. 실제 비밀번호·JWT·토큰·개인키·서버 전용 키·실제 개인정보는 코드, 로그, 제출 묶음에 넣지 않습니다. `src/verify-login.mjs`는 3단계 틀의 검증 도우미 그대로 사용하며 수정하지 않습니다.

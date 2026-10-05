@@ -10,6 +10,10 @@ const appUrl = (config) => {
   return app;
 };
 
+const safeJson = async (response) => {
+  try { return await response.json(); } catch { return null; }
+};
+
 export async function runAttackChecks(config) {
   const app = appUrl(config);
 
@@ -20,67 +24,75 @@ export async function runAttackChecks(config) {
     const response = await fetch(new URL('/data.json', app), {
       redirect: 'error', signal: AbortSignal.timeout(10000),
     });
-    let visible = false;
-    if (response.ok) {
-      try {
-        const data = await response.json();
-        visible = data?.sampleMarker === config.sampleMarker && Array.isArray(data.notes) && data.notes.length > 0;
-      } catch {}
-    }
+    const data = response.ok ? await safeJson(response) : null;
+    const visible = data?.sampleMarker === config.sampleMarker
+      && Array.isArray(data.notes) && data.notes.length > 0;
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 자료를 확인',
-      observed: visible ? '비로그인 요청에서 공개 가상 자료 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${response.status})` }];
+      observed: visible ? '비로그인 요청에서 공개 가상 자료 확인 표시가 보임'
+        : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${response.status})` }];
   }
 
-  if (config.step !== 2) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
-  const staticResponse = await fetch(new URL('/data.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
-  });
-  const staticCache = staticResponse.headers.get('cache-control') || '';
-  const staticNoStore = /\bno-store\b/iu.test(staticCache);
-  let staticEmpty = false;
-  if (staticResponse.ok) {
-    try {
-      const data = await staticResponse.json();
-      staticEmpty = Array.isArray(data.notes) && data.notes.length === 0
-        && !Object.hasOwn(data, 'sampleMarker') && staticNoStore;
-    } catch {}
+  if (config.step === 2) {
+    const staticResponse = await fetch(new URL('/data.json', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+    });
+    const staticCache = staticResponse.headers.get('cache-control') || '';
+    const staticData = staticResponse.ok ? await safeJson(staticResponse) : null;
+    const staticEmpty = Array.isArray(staticData?.notes) && staticData.notes.length === 0
+      && !Object.hasOwn(staticData, 'sampleMarker') && /\bno-store\b/iu.test(staticCache);
+
+    const identityResponse = await fetch(new URL('/aleph.json', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+    });
+    const identityCache = identityResponse.headers.get('cache-control') || '';
+    const identityData = identityResponse.ok ? await safeJson(identityResponse) : null;
+    const identityClean = identityData?.step === 2
+      && !Object.hasOwn(identityData, 'sampleMarker') && /\bno-store\b/iu.test(identityCache);
+
+    const apiResponse = await fetch(new URL('/api/notes', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+    });
+    const apiCache = apiResponse.headers.get('cache-control') || '';
+    const apiData = apiResponse.ok ? await safeJson(apiResponse) : null;
+    const apiCount = Array.isArray(apiData?.notes) ? apiData.notes.length : null;
+
+    return [
+      { attackId: 'static_note_copy_removed', expected: '정적 /data.json은 메모·1단계 표시 없이 notes=[]이고 no-store',
+        observed: staticEmpty ? '정적 /data.json은 notes=[]·표시 없음·Cache-Control=no-store'
+          : `정적 /data.json 검증 실패 (HTTP ${staticResponse.status}, Cache-Control=${staticCache || '없음'})` },
+      { attackId: 'step1_marker_removed', expected: '2단계 /aleph.json은 1단계 표시 없이 no-store',
+        observed: identityClean ? '2단계 /aleph.json은 표시 없음·Cache-Control=no-store'
+          : `/aleph.json 검증 실패 (HTTP ${identityResponse.status}, Cache-Control=${identityCache || '없음'})` },
+      { attackId: 'public_notes_api_remains', expected: '비로그인 /api/notes는 4건을 반환하고 no-store이며 공개 주소 약점이 남음',
+        observed: apiCount === null ? `공개 API가 자료 목록을 반환하지 않음 (HTTP ${apiResponse.status})`
+          : `비로그인 /api/notes가 ${apiCount}건 반환·Cache-Control=${/\bno-store\b/iu.test(apiCache) ? 'no-store' : (apiCache || '없음')}·공개 주소 유지` },
+    ];
   }
 
-  const identityResponse = await fetch(new URL('/aleph.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
-  });
-  const identityCache = identityResponse.headers.get('cache-control') || '';
-  const identityNoStore = /\bno-store\b/iu.test(identityCache);
-  let identityClean = false;
-  if (identityResponse.ok) {
-    try {
-      const data = await identityResponse.json();
-      identityClean = data?.step === 2 && !Object.hasOwn(data, 'sampleMarker') && identityNoStore;
-    } catch {}
-  }
+  if (config.step !== 3) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
 
-  const apiResponse = await fetch(new URL('/api/notes', app), {
+  const listResponse = await fetch(new URL('/api/notes', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'application/json' },
   });
-  const apiCache = apiResponse.headers.get('cache-control') || '';
-  const apiNoStore = /\bno-store\b/iu.test(apiCache);
-  let apiCount = null;
-  if (apiResponse.ok) {
-    try {
-      const data = await apiResponse.json();
-      if (Array.isArray(data.notes)) apiCount = data.notes.length;
-    } catch {}
-  }
+  const listBody = await safeJson(listResponse);
+  const listDenied = listResponse.status === 401
+    && !Array.isArray(listBody) && !Array.isArray(listBody?.notes);
+
+  const itemResponse = await fetch(new URL('/api/notes/00000000-0000-4000-8000-000000000000', app), {
+    redirect: 'error', signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'application/json' },
+  });
+  const itemBody = await safeJson(itemResponse);
+  const itemDenied = itemResponse.status === 401
+    && !itemBody?.title && !itemBody?.body;
 
   return [
-    { attackId: 'static_note_copy_removed', expected: '정적 /data.json은 메모·1단계 표시 없이 notes=[]이고 no-store',
-      observed: staticEmpty ? '정적 /data.json은 notes=[]·표시 없음·Cache-Control=no-store'
-        : `정적 /data.json 검증 실패 (HTTP ${staticResponse.status}, Cache-Control=${staticCache || '없음'})` },
-    { attackId: 'step1_marker_removed', expected: '2단계 /aleph.json은 1단계 표시 없이 no-store',
-      observed: identityClean ? '2단계 /aleph.json은 표시 없음·Cache-Control=no-store'
-        : `/aleph.json 검증 실패 (HTTP ${identityResponse.status}, Cache-Control=${identityCache || '없음'})` },
-    { attackId: 'public_notes_api_remains', expected: '비로그인 /api/notes는 4건을 반환하고 no-store이며 공개 주소 약점이 남음',
-      observed: apiCount === null ? `공개 API가 자료 목록을 반환하지 않음 (HTTP ${apiResponse.status})`
-        : `비로그인 /api/notes가 ${apiCount}건 반환·Cache-Control=${apiNoStore ? 'no-store' : (apiCache || '없음')}·공개 주소 유지` },
+    { attackId: 'anonymous_note_list_denied', expected: '무로그인 목록 GET은 자료 없이 401 거부',
+      observed: listDenied ? '무로그인 /api/notes가 자료 없이 HTTP 401로 거부됨'
+        : `무로그인 목록 거부 검증 실패 (HTTP ${listResponse.status})` },
+    { attackId: 'anonymous_note_item_denied', expected: '무로그인 한 건 GET은 자료 없이 401 거부',
+      observed: itemDenied ? '무로그인 /api/notes/:id가 자료 없이 HTTP 401로 거부됨'
+        : `무로그인 한 건 거부 검증 실패 (HTTP ${itemResponse.status})` },
   ];
 }

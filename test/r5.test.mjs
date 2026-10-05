@@ -107,3 +107,32 @@ test('step 2 bundle explanation requires the three-line security story', () => {
   assert.throws(() => validateBundleNotes({ explanation: '한 줄 설명만 있습니다.' }, 2), /정확히 세 줄/u);
   assert.throws(() => validateBundleNotes({ explanation: '가'.repeat(1501) + '\n나\n다' }, 2), /1500자 이하/u);
 });
+
+test('step 3 deployment identity is supported without a step 1 marker', () => {
+  const step3 = { step: 3, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
+  assert.deepEqual(deploymentIdentity(env, step3), {
+    schema: 'aleph.defense.deployment.v1',
+    step: 3,
+    repoUrl: 'https://github.com/student-a/aleph-defense',
+    commit: 'a'.repeat(40),
+    publicAppUrl: 'https://student-defense-123.vercel.app',
+    judgeIssuer: config.judgeIssuer,
+  });
+});
+
+test('step 3 attack checks require anonymous list and item denial', async () => {
+  const originalFetch = globalThis.fetch;
+  const step3 = { step: 3, publicAppUrl: 'https://student-defense.vercel.app' };
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+    const results = await runAttackChecks(step3);
+    assert.equal(results.length, 2);
+    assert.match(results[0].observed, /401/u);
+    assert.match(results[1].observed, /401/u);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

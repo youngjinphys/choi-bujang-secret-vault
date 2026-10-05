@@ -15,11 +15,11 @@ if (config.step === 1) {
   }
   await copyFile(source, output);
   console.log('실습용 공개 자료를 public/data.json에 복사했습니다.');
-} else if (config.step === 2) {
+} else if (config.step === 2 || config.step === 3) {
   await writeFile(output, `${JSON.stringify({ notes: [] }, null, 2)}\n`, 'utf8');
-  console.log('2단계 정적 data.json에는 1단계 확인 표시나 메모 본문을 넣지 않습니다.');
+  console.log(`${config.step}단계 정적 data.json에는 1단계 확인 표시나 메모 본문을 넣지 않습니다.`);
 } else {
-  throw new Error('현재 build-public.mjs는 1~2단계 빌드만 지원합니다.');
+  throw new Error('현재 build-public.mjs는 1~3단계 빌드만 지원합니다.');
 }
 
 if (!process.argv.includes('--local')) {
