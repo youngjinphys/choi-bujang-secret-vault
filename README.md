@@ -1,26 +1,87 @@
-# BYTE BACK 방어전 시작 틀 R5
+# BYTE BACK 방어전 · 2단계 자료를 코드 밖으로 옮기기
 
-이 저장소는 1단계에서 학생 본인이 GitHub 저장소와 Vercel 배포를 만드는 출발점입니다. 포함된 메모 네 건은 가상 자료입니다. 실제 학생 자료, 토큰, 비밀키를 넣지 마세요.
+현재 단계는 **2단계**입니다. 1단계의 정적 `data.json` 공개를 끝내고, 자료 본문은 Supabase의 `public.learning_notes` 테이블로 옮깁니다. 브라우저는 Supabase에 직접 접속하지 않고 Vercel 서버 함수 `/api/notes`만 호출합니다.
 
-## 학생이 하는 일: 세 걸음
+## 현재 작동 구조
 
-1. GitHub 계정을 만듭니다.
-2. 방어전 1단계 카드의 **Deploy** 버튼을 누릅니다. Vercel에 GitHub로 로그인하고, 새 저장소가 **본인 계정의 Public 저장소**인지 확인한 뒤 Deploy를 누릅니다.
-3. 배포가 끝나면 화면에 나온 `https://…vercel.app` 주소를 방어전 1단계 카드에 붙여넣고 제출합니다. 저장소 주소나 설정 파일은 적지 않습니다.
+1. `supabase/step2_notes.sql`은 `owner_id uuid`를 포함한 `public.learning_notes`를 만들고 RLS를 켭니다. `owner_id`에는 `auth.users` 외래키를 걸지 않습니다.
+2. `anon`과 `authenticated`에는 테이블 권한을 주지 않으며 SELECT 정책도 만들지 않습니다.
+3. `/api/notes`만 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽어 `id`, `title`, `content`만 반환합니다. 키 값은 응답·로그·브라우저 파일에 넣지 않습니다.
+4. `/`은 `/api/notes`를 호출해 카드를 그립니다. 정적 `/data.json`의 `notes`는 빈 배열입니다.
+5. **남은 약점:** 2단계의 `/api/notes` 주소 자체에는 아직 사용자 인증이 없습니다. 서버 키가 숨겨져 있어도 누구나 이 공개 함수를 호출해 자료를 읽을 수 있으므로 다음 단계의 접근 통제가 필요합니다.
 
-배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. `/data.json`에는 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
+## Supabase SQL Editor에서 실행
 
-## 시작 틀의 자동 처리
+`supabase/step2_notes.sql`을 SQL Editor에서 실행합니다. 그 다음 Table Editor 또는 아래 확인 쿼리로 `owner_id`와 RLS를 확인합니다.
 
-`vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
+```sql
+select column_name, data_type
+from information_schema.columns
+where table_schema = 'public' and table_name = 'learning_notes'
+order by ordinal_position;
 
-`aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+select relrowsecurity
+from pg_class
+where oid = 'public.learning_notes'::regclass;
 
-로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
+select grantee, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name = 'learning_notes'
+  and grantee in ('anon', 'authenticated');
+```
 
-## 다음 단계의 코딩 도구에 전달할 규칙
+마지막 쿼리는 행이 없어야 합니다. 네 건의 학습용 자료는 **SQL Editor에서만** 입력하고 그 실제 문장을 저장소 파일에 복사하지 않습니다.
 
-[AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
+```sql
+insert into public.learning_notes (owner_id, title, content)
+values
+  (null, '<첫 번째 제목>', '<첫 번째 본문>'),
+  (null, '<두 번째 제목>', '<두 번째 본문>'),
+  (null, '<세 번째 제목>', '<세 번째 본문>'),
+  (null, '<네 번째 제목>', '<네 번째 본문>');
+```
 
-`src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
-# choi-bujang-secret-vault
+## Vercel 환경변수
+
+Vercel Project Settings의 환경변수에 다음 **이름만** 등록합니다. 실제 값은 Vercel의 비밀 입력란에 직접 넣고 Git, 채팅, 로그에 복사하지 않습니다.
+
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY` — 서버 전용 secret/service key. 브라우저용 변수가 아닙니다.
+
+값이 없으면 `/api/notes`는 503으로 실패하며 키를 대신 노출하지 않습니다.
+
+## 다시 실행
+
+```bash
+npm run build -- --local
+```
+
+Vercel에 환경변수와 DB 자료를 넣은 뒤 배포 화면을 새로고침합니다. 정상 상태에서는 `/`에 네 카드가 보이고 `/data.json`의 `notes`는 빈 배열입니다.
+
+## 현재 GitHub 최신 파일과 현재 배포 정적 파일 검색
+
+실제 문장을 README나 명령 기록에 다시 남기지 않기 위해 검사할 한 문장을 셸 변수로만 입력합니다.
+
+```bash
+read -r CHECK_TEXT
+git grep -nF -- "$CHECK_TEXT" HEAD -- . || true
+APP='https://choi-bujang-secret-vault-six.vercel.app'
+{ curl -fsS "$APP/"; curl -fsS "$APP/data.json"; } | grep -nF -- "$CHECK_TEXT" || true
+```
+
+두 검색 모두 출력이 없어야 합니다. 공개 API의 남은 약점은 본문을 출력하지 않고 건수만 확인합니다.
+
+```bash
+curl -fsS "$APP/api/notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).notes.length))"
+```
+
+환경변수와 DB가 준비된 2단계에서는 `4`가 나오면 화면이 읽는 공개 API가 네 건을 반환한다는 뜻입니다. 이것은 **현재 단계의 남은 공개 접근 약점**이지 보호 완료의 증거가 아닙니다.
+
+## 과거 노출에 대한 기록
+
+현재 HEAD와 새 배포의 정적 파일에서 문장을 지워도 **옛 공개 Git 커밋이나 옛 Vercel 배포가 접근 가능한 동안 과거 노출이 해소됐다고 기록하면 안 됩니다.** 이번 단계가 증명하는 것은 새 정적 파일과 현재 GitHub 최신 파일에서 본문을 제거했다는 것뿐입니다. 과거 커밋·배포의 제거 또는 접근 불가 여부는 별도로 확인해야 합니다.
+
+## 코딩 도구 규칙
+
+후속 작업 전에는 [AGENTS.md](AGENTS.md)를 먼저 확인합니다. 실제 키·토큰·개인키·실제 개인정보는 코드, Git, 로그, 제출 묶음에 넣지 않습니다. `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 운영 심판 판정이 아닙니다.
