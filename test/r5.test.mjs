@@ -86,8 +86,8 @@ test('step 2 attack checks reject static remnants and keep the public API weakne
     };
     const results = await runAttackChecks(step2);
     assert.equal(results.length, 3);
-    assert.match(results[0].observed, /표시가 없고/u);
-    assert.match(results[1].observed, /표시가 없음/u);
+    assert.match(results[0].observed, /표시 없음/u);
+    assert.match(results[1].observed, /표시 없음/u);
     assert.match(results[2].observed, /4건/u);
     assert.match(results[2].observed, /no-store/u);
   } finally {
@@ -135,4 +135,44 @@ test('step 3 attack checks require anonymous list and item denial', async () => 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('step 5 deployment identity is supported', () => {
+  const step5 = { step: 5, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
+  assert.equal(deploymentIdentity(env, step5).step, 5);
+});
+
+test('step 5 attack check validates server denial and queryless original URL', async () => {
+  const originalFetch = globalThis.fetch;
+  const step5 = {
+    step: 5,
+    publicAppUrl: 'https://student-defense.vercel.app',
+    originalApiUrl: 'https://project.supabase.co/rest/v1/learning_notes',
+  };
+  try {
+    globalThis.fetch = async (url) => {
+      const target = new URL(String(url));
+      if (target.hostname === 'student-defense.vercel.app') {
+        return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+          status: 401, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ message: 'No API key found in request' }), {
+        status: 401, headers: { 'content-type': 'application/json' },
+      });
+    };
+    const results = await runAttackChecks(step5);
+    assert.equal(results.length, 2);
+    assert.match(results[0].observed, /401/u);
+    assert.match(results[1].observed, /401/u);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('server note queries keep verified owner filtering', async () => {
+  const source = await (await import('node:fs/promises')).readFile(
+    new URL('../api/notes.js', import.meta.url), 'utf8');
+  assert.ok((source.match(/\.eq\('owner_id', identity\.userId\)/gu) ?? []).length >= 4);
+  assert.match(source, /owner_id:\s*identity\.userId/u);
 });

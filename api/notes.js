@@ -73,6 +73,7 @@ export default async function handler(request, response) {
       const { data, error } = await current.supabase
         .from('learning_notes')
         .select('id,title,content')
+        .eq('owner_id', identity.userId)
         .order('created_at', { ascending: true })
         .order('id', { ascending: true });
       if (error) return response.status(502).json({ error: 'NOTES_BACKEND_ERROR' });
@@ -108,6 +109,7 @@ export default async function handler(request, response) {
       .from('learning_notes')
       .select('id,title,content')
       .eq('id', id)
+      .eq('owner_id', identity.userId)
       .maybeSingle();
     if (error) return response.status(502).json({ error: 'NOTES_BACKEND_ERROR' });
     if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
@@ -123,6 +125,7 @@ export default async function handler(request, response) {
       .from('learning_notes')
       .update({ title, content })
       .eq('id', id)
+      .eq('owner_id', identity.userId)
       .select('id,title,content')
       .maybeSingle();
     if (error) return response.status(502).json({ error: 'NOTES_BACKEND_ERROR' });
@@ -135,6 +138,7 @@ export default async function handler(request, response) {
       .from('learning_notes')
       .delete()
       .eq('id', id)
+      .eq('owner_id', identity.userId)
       .select('id')
       .maybeSingle();
     if (error) return response.status(502).json({ error: 'NOTES_BACKEND_ERROR' });

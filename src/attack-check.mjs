@@ -69,7 +69,41 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step !== 3) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (config.step === 3) {
+    const listResponse = await fetch(new URL('/api/notes', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+      headers: { Accept: 'application/json' },
+    });
+    const listBody = await safeJson(listResponse);
+    const listDenied = listResponse.status === 401
+      && !Array.isArray(listBody) && !Array.isArray(listBody?.notes);
+
+    const itemResponse = await fetch(new URL('/api/notes/00000000-0000-4000-8000-000000000000', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+      headers: { Accept: 'application/json' },
+    });
+    const itemBody = await safeJson(itemResponse);
+    const itemDenied = itemResponse.status === 401
+      && !itemBody?.title && !itemBody?.body;
+
+    return [
+      { attackId: 'anonymous_note_list_denied', expected: '무로그인 목록 GET은 자료 없이 401 거부',
+        observed: listDenied ? '무로그인 /api/notes가 자료 없이 HTTP 401로 거부됨'
+          : `무로그인 목록 거부 검증 실패 (HTTP ${listResponse.status})` },
+      { attackId: 'anonymous_note_item_denied', expected: '무로그인 한 건 GET은 자료 없이 401 거부',
+        observed: itemDenied ? '무로그인 /api/notes/:id가 자료 없이 HTTP 401로 거부됨'
+          : `무로그인 한 건 거부 검증 실패 (HTTP ${itemResponse.status})` },
+    ];
+  }
+
+  if (config.step !== 5) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+
+  let original;
+  try { original = new URL(config.originalApiUrl); } catch { throw new Error('5단계 원본 자료 API 주소를 확인해 주세요.'); }
+  if (original.protocol !== 'https:' || original.username || original.password
+      || original.search || original.hash || original.pathname.endsWith('/')) {
+    throw new Error('5단계 originalApiUrl은 쿼리 없는 HTTPS 자료 경로여야 합니다.');
+  }
 
   const listResponse = await fetch(new URL('/api/notes', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
@@ -79,20 +113,20 @@ export async function runAttackChecks(config) {
   const listDenied = listResponse.status === 401
     && !Array.isArray(listBody) && !Array.isArray(listBody?.notes);
 
-  const itemResponse = await fetch(new URL('/api/notes/00000000-0000-4000-8000-000000000000', app), {
+  const originResponse = await fetch(original, {
     redirect: 'error', signal: AbortSignal.timeout(10000),
     headers: { Accept: 'application/json' },
   });
-  const itemBody = await safeJson(itemResponse);
-  const itemDenied = itemResponse.status === 401
-    && !itemBody?.title && !itemBody?.body;
+  const originBody = await safeJson(originResponse);
+  const originDenied = [401, 403].includes(originResponse.status)
+    && !Array.isArray(originBody);
 
   return [
-    { attackId: 'anonymous_note_list_denied', expected: '무로그인 목록 GET은 자료 없이 401 거부',
+    { attackId: 'anonymous_note_list_denied', expected: '무로그인 Vercel 자료 API는 자료 없이 401 거부',
       observed: listDenied ? '무로그인 /api/notes가 자료 없이 HTTP 401로 거부됨'
         : `무로그인 목록 거부 검증 실패 (HTTP ${listResponse.status})` },
-    { attackId: 'anonymous_note_item_denied', expected: '무로그인 한 건 GET은 자료 없이 401 거부',
-      observed: itemDenied ? '무로그인 /api/notes/:id가 자료 없이 HTTP 401로 거부됨'
-        : `무로그인 한 건 거부 검증 실패 (HTTP ${itemResponse.status})` },
+    { attackId: 'direct_origin_without_key_denied', expected: '원본 자료 HTTPS 경로는 키 없는 직접 요청을 거부',
+      observed: originDenied ? `원본 자료 경로가 자료 없이 HTTP ${originResponse.status}로 거부됨`
+        : `원본 자료 직접 요청 거부 검증 실패 (HTTP ${originResponse.status})` },
   ];
 }
