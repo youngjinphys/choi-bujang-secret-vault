@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deploymentIdentity } from '../scripts/deployment-identity.mjs';
+import { NOTE_ROUTES, validateAllowedRoutes, validateOriginalApiUrl } from '../scripts/config-contract.mjs';
 import { runAttackChecks } from '../src/attack-check.mjs';
 import { validateBundleNotes } from '../scripts/bundle-notes-validation.mjs';
 
@@ -109,7 +110,7 @@ test('step 2 bundle explanation requires the three-line security story', () => {
 });
 
 test('step 3 deployment identity is supported without a step 1 marker', () => {
-  const step3 = { step: 3, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
+  const step3 = { step: 3, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl, allowedRoutes: [...NOTE_ROUTES] };
   assert.deepEqual(deploymentIdentity(env, step3), {
     schema: 'aleph.defense.deployment.v1',
     step: 3,
@@ -117,6 +118,7 @@ test('step 3 deployment identity is supported without a step 1 marker', () => {
     commit: 'a'.repeat(40),
     publicAppUrl: 'https://student-defense-123.vercel.app',
     judgeIssuer: config.judgeIssuer,
+    allowedRoutes: step3.allowedRoutes,
   });
 });
 
@@ -137,9 +139,29 @@ test('step 3 attack checks require anonymous list and item denial', async () => 
   }
 });
 
-test('step 5 deployment identity is supported', () => {
-  const step5 = { step: 5, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
-  assert.equal(deploymentIdentity(env, step5).step, 5);
+test('step 5 deployment identity exposes only a queryless HTTPS original API URL', () => {
+  const step5 = {
+    step: 5,
+    judgeIssuer: config.judgeIssuer,
+    publicAppUrl: config.publicAppUrl,
+    identityProvider: { issuer: 'https://project.supabase.co/auth/v1' },
+    allowedRoutes: [...NOTE_ROUTES],
+    originalApiUrl: 'https://project.supabase.co/rest/v1/learning_notes',
+  };
+  assert.deepEqual(deploymentIdentity(env, step5), {
+    schema: 'aleph.defense.deployment.v1',
+    step: 5,
+    repoUrl: 'https://github.com/student-a/aleph-defense',
+    commit: 'a'.repeat(40),
+    publicAppUrl: 'https://student-defense-123.vercel.app',
+    judgeIssuer: config.judgeIssuer,
+    allowedRoutes: step5.allowedRoutes,
+    originalApiUrl: step5.originalApiUrl,
+  });
+  assert.throws(() => deploymentIdentity(env, { ...step5, originalApiUrl: 'http://project.supabase.co/rest/v1/learning_notes' }));
+  assert.throws(() => deploymentIdentity(env, { ...step5, originalApiUrl: 'https://project.supabase.co/rest/v1/learning_notes?select=*' }));
+  assert.throws(() => deploymentIdentity(env, { ...step5, originalApiUrl: 'https://other.supabase.co/rest/v1/learning_notes' }));
+  assert.throws(() => deploymentIdentity(env, { ...step5, allowedRoutes: ['GET /api/notes', 'GET /api/notes/:id'] }));
 });
 
 test('step 5 attack check validates server denial and queryless original URL', async () => {
@@ -152,9 +174,24 @@ test('step 5 attack check validates server denial and queryless original URL', a
   try {
     globalThis.fetch = async (url) => {
       const target = new URL(String(url));
-      if (target.hostname === 'student-defense.vercel.app') {
+      if (target.hostname === 'student-defense.vercel.app' && target.pathname === '/api/notes') {
         return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
           status: 401, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target.hostname === 'student-defense.vercel.app' && target.pathname === '/aleph.json') {
+        return new Response(JSON.stringify({
+          step: 5,
+          originalApiUrl: step5.originalApiUrl,
+          allowedRoutes: ['/api/notes'],
+        }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target.hostname === 'student-defense.vercel.app' && target.pathname === '/') {
+        return new Response('<!doctype html><title>clean</title>', {
+          status: 200,
+          headers: { 'content-type': 'text/html', 'x-content-type-options': 'nosniff' },
         });
       }
       return new Response(JSON.stringify({ message: 'No API key found in request' }), {
@@ -162,9 +199,13 @@ test('step 5 attack check validates server denial and queryless original URL', a
       });
     };
     const results = await runAttackChecks(step5);
-    assert.equal(results.length, 2);
+    assert.equal(results.length, 6);
     assert.match(results[0].observed, /401/u);
-    assert.match(results[1].observed, /401/u);
+    assert.match(results[1].observed, /일치/u);
+    assert.match(results[2].observed, /경로/u);
+    assert.match(results[3].observed, /nosniff/u);
+    assert.match(results[4].observed, /공개 키 패턴이 없음/u);
+    assert.match(results[5].observed, /401/u);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -179,7 +220,7 @@ test('server note queries keep verified owner filtering', async () => {
 });
 
 test('step 4 deployment identity is supported', () => {
-  const step4 = { step: 4, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
+  const step4 = { step: 4, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl, allowedRoutes: [...NOTE_ROUTES] };
   assert.equal(deploymentIdentity(env, step4).step, 4);
 });
 
@@ -207,4 +248,35 @@ test('step 4 server API enforces verified owner boundaries', async () => {
   assert.match(source, /owner_id:\s*identity\.userId/u);
   assert.match(source, /\.eq\('owner_id', identity\.userId\)/u);
   assert.match(source, /new Set\(\['title', 'body'\]\)/u);
+});
+
+test('step 5 config contract keeps canonical path-only routes and bound origin', () => {
+  const checked = {
+    step: 5,
+    identityProvider: { issuer: 'https://project.supabase.co/auth/v1' },
+    allowedRoutes: [...NOTE_ROUTES],
+    originalApiUrl: 'https://project.supabase.co/rest/v1/learning_notes',
+  };
+  assert.deepEqual(validateAllowedRoutes(checked), NOTE_ROUTES);
+  assert.equal(validateOriginalApiUrl(checked), checked.originalApiUrl);
+  assert.throws(() => validateAllowedRoutes({ ...checked, allowedRoutes: ['GET /api/notes', '/api/notes/:id'] }));
+  assert.throws(() => validateOriginalApiUrl({ ...checked, originalApiUrl: 'https://evil.example/rest/v1/learning_notes' }));
+});
+
+test('step 5 browser code contains no Supabase public API key and uses server auth routes', async () => {
+  const source = await (await import('node:fs/promises')).readFile(
+    new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /sb_publishable_[A-Za-z0-9_-]+/u);
+  assert.doesNotMatch(source, /createClient\s*\(/u);
+  assert.match(source, /\/api\/auth\/\$\{action\}/u);
+  assert.match(source, /\/api\/notes/u);
+});
+
+test('root response is configured with nosniff', async () => {
+  const source = await (await import('node:fs/promises')).readFile(
+    new URL('../vercel.json', import.meta.url), 'utf8');
+  const config = JSON.parse(source);
+  const root = config.headers.find((entry) => entry.source === '/');
+  assert.ok(root);
+  assert.equal(root.headers.find((header) => header.key === 'X-Content-Type-Options')?.value, 'nosniff');
 });

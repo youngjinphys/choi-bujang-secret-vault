@@ -48,9 +48,9 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 4단계 내 자료만 허용</div>
+    <div class="eyebrow">BYTE BACK · 5단계 서버 한곳으로 모으기</div>
     <h1>로그인 자료실</h1>
-    <p>Supabase Auth로 신원을 확인하고, 서버가 Bearer 토큰을 다시 검증한 뒤에만 가상 메모 API를 엽니다.</p>
+    <p>로그인과 메모 요청 모두 Vercel 서버 함수를 거치며, 브라우저에는 Supabase API 키를 두지 않습니다.</p>
 
     <div class="shell">
       <section class="panel" id="signed-out">
@@ -70,15 +70,15 @@
         <div class="session">
           <div>
             <strong id="session-label">로그인됨</strong>
-            <span class="muted">브라우저 userId·role은 서버 권한 판단에 사용하지 않습니다.</span>
+            <span class="muted">서버가 로그인 토큰과 메모 소유자를 다시 검증합니다.</span>
           </div>
           <button id="logout" class="secondary" type="button">로그아웃</button>
         </div>
       </section>
 
       <section class="panel notice">
-        4단계는 서버가 검증한 사용자 ID와 메모 owner_id를 비교합니다.
-        로그인해도 본인 소유 메모만 목록·조회·수정·삭제할 수 있고, 타인 메모는 존재 여부를 드러내지 않고 거부합니다.
+        메모 CRUD는 Vercel /api/notes 경로만 사용합니다. 로그인도 /api/auth 경로를 거쳐 처리하므로
+        화면 코드에는 Supabase 공개 키나 원본 Data API 자격 증명이 없습니다.
       </section>
 
       <section class="panel" id="workspace" hidden>
@@ -97,13 +97,7 @@
     </div>
   </main>
 
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
-
-    const SUPABASE_URL = 'https://ytvwpdjfrpwxwtucclpe.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_8XPf1UofCqHSQV5HoW_7Vg_mUSRLOCW';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-
+  <script>
     const signedOut = document.querySelector('#signed-out');
     const signedIn = document.querySelector('#signed-in');
     const workspace = document.querySelector('#workspace');
@@ -121,12 +115,66 @@
       element.classList.toggle('error', error);
     };
 
-    const authFetch = async (path, init = {}) => {
-      const token = session?.access_token;
-      if (!token) throw new Error('로그인이 필요합니다.');
+    const parseJson = async (response) => {
+      try { return await response.json(); } catch { return null; }
+    };
+
+    const applySession = (data) => {
+      if (!data?.accessToken) {
+        session = null;
+        return false;
+      }
+      session = {
+        access_token: data.accessToken,
+        expires_at: data.expiresAt ?? null,
+        user: data.user ?? null,
+      };
+      return true;
+    };
+
+    const authApi = async (action, body) => {
+      const headers = { Accept: 'application/json' };
+      const init = {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+      };
+      if (body) {
+        headers['Content-Type'] = 'application/json';
+        init.body = JSON.stringify(body);
+      }
+      return fetch(`/api/auth/${action}`, init);
+    };
+
+    const restoreSession = async () => {
+      try {
+        const response = await authApi('session');
+        const data = await parseJson(response);
+        if (!response.ok || !applySession(data)) {
+          session = null;
+          return false;
+        }
+        return true;
+      } catch {
+        session = null;
+        return false;
+      }
+    };
+
+    const apiError = async (response, fallback) => {
+      const data = await parseJson(response);
+      return typeof data?.error === 'string' ? data.error : fallback;
+    };
+
+    const authFetch = async (path, init = {}, retry = true) => {
+      if (!session?.access_token && !(await restoreSession())) {
+        throw new Error('로그인이 필요합니다.');
+      }
       const headers = new Headers(init.headers || {});
       headers.set('Accept', 'application/json');
-      headers.set('Authorization', `Bearer ${token}`);
+      headers.set('Authorization', `Bearer ${session.access_token}`);
       if (init.body) headers.set('Content-Type', 'application/json');
       const response = await fetch(path, {
         ...init,
@@ -135,16 +183,10 @@
         credentials: 'omit',
         redirect: 'error',
       });
-      if (response.status === 401) throw new Error('로그인 토큰이 만료되었거나 유효하지 않습니다.');
+      if (response.status === 401 && retry && await restoreSession()) {
+        return authFetch(path, init, false);
+      }
       return response;
-    };
-
-    const apiError = async (response, fallback) => {
-      try {
-        const data = await response.json();
-        if (typeof data?.error === 'string') return data.error;
-      } catch {}
-      return fallback;
     };
 
     const renderAuth = () => {
@@ -196,29 +238,37 @@
       article.append(grid);
 
       save.addEventListener('click', async () => {
-        setStatus(workspaceStatus, '수정 중…');
-        const response = await authFetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-          method: 'PUT',
-          body: JSON.stringify({ title: title.value, body: body.value }),
-        });
-        if (!response.ok) {
-          setStatus(workspaceStatus, await apiError(response, '수정에 실패했습니다.'), true);
-          return;
+        try {
+          setStatus(workspaceStatus, '수정 중…');
+          const response = await authFetch(`/api/notes/${encodeURIComponent(note.id)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ title: title.value, body: body.value }),
+          });
+          if (!response.ok) {
+            setStatus(workspaceStatus, await apiError(response, '수정에 실패했습니다.'), true);
+            return;
+          }
+          setStatus(workspaceStatus, '수정했습니다.');
+          await loadNotes();
+        } catch (error) {
+          setStatus(workspaceStatus, error.message, true);
         }
-        setStatus(workspaceStatus, '수정했습니다.');
-        await loadNotes();
       });
 
       remove.addEventListener('click', async () => {
         if (!window.confirm('이 가상 메모를 삭제할까요?')) return;
-        setStatus(workspaceStatus, '삭제 중…');
-        const response = await authFetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
-        if (!response.ok) {
-          setStatus(workspaceStatus, await apiError(response, '삭제에 실패했습니다.'), true);
-          return;
+        try {
+          setStatus(workspaceStatus, '삭제 중…');
+          const response = await authFetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
+          if (!response.ok) {
+            setStatus(workspaceStatus, await apiError(response, '삭제에 실패했습니다.'), true);
+            return;
+          }
+          setStatus(workspaceStatus, '삭제했습니다.');
+          await loadNotes();
+        } catch (error) {
+          setStatus(workspaceStatus, error.message, true);
         }
-        setStatus(workspaceStatus, '삭제했습니다.');
-        await loadNotes();
       });
 
       return article;
@@ -226,44 +276,51 @@
 
     async function loadNotes() {
       if (!session?.access_token) return;
-      const response = await authFetch('/api/notes');
-      if (!response.ok) {
-        setStatus(workspaceStatus, await apiError(response, '자료를 읽을 수 없습니다.'), true);
-        notesRoot.replaceChildren();
-        return;
+      try {
+        const response = await authFetch('/api/notes');
+        if (!response.ok) {
+          setStatus(workspaceStatus, await apiError(response, '자료를 읽을 수 없습니다.'), true);
+          notesRoot.replaceChildren();
+          return;
+        }
+        const notes = await response.json();
+        if (!Array.isArray(notes)) {
+          setStatus(workspaceStatus, '자료 형식이 맞지 않습니다.', true);
+          return;
+        }
+        notesRoot.replaceChildren(...notes.map(noteEditor));
+        if (!notes.length) setStatus(workspaceStatus, '메모가 없습니다.');
+      } catch (error) {
+        setStatus(workspaceStatus, error.message, true);
+        session = null;
+        renderAuth();
       }
-      const notes = await response.json();
-      if (!Array.isArray(notes)) {
-        setStatus(workspaceStatus, '자료 형식이 맞지 않습니다.', true);
-        return;
-      }
-      notesRoot.replaceChildren(...notes.map(noteEditor));
-      if (!notes.length) setStatus(workspaceStatus, '메모가 없습니다.');
     }
 
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       setStatus(loginStatus, '로그인 중…');
-      const email = document.querySelector('#email').value;
-      const password = document.querySelector('#password').value;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        setStatus(loginStatus, error.message, true);
-        return;
+      try {
+        const response = await authApi('login', {
+          email: document.querySelector('#email').value,
+          password: document.querySelector('#password').value,
+        });
+        const data = await parseJson(response);
+        document.querySelector('#password').value = '';
+        if (!response.ok || !applySession(data)) {
+          setStatus(loginStatus, data?.error || '로그인에 실패했습니다.', true);
+          return;
+        }
+        setStatus(loginStatus);
+        renderAuth();
+        await loadNotes();
+      } catch {
+        setStatus(loginStatus, '로그인 서버에 연결할 수 없습니다.', true);
       }
-      session = data.session;
-      document.querySelector('#password').value = '';
-      setStatus(loginStatus);
-      renderAuth();
-      await loadNotes();
     });
 
     logoutButton.addEventListener('click', async () => {
-      const { error } = await supabase.auth.signOut({ scope: 'local' });
-      if (error) {
-        setStatus(workspaceStatus, error.message, true);
-        return;
-      }
+      try { await authApi('logout'); } catch {}
       session = null;
       renderAuth();
     });
@@ -272,32 +329,30 @@
       event.preventDefault();
       const title = document.querySelector('#new-title');
       const body = document.querySelector('#new-body');
-      setStatus(workspaceStatus, '추가 중…');
-      const response = await authFetch('/api/notes', {
-        method: 'POST',
-        body: JSON.stringify({ title: title.value, body: body.value }),
-      });
-      if (!response.ok) {
-        setStatus(workspaceStatus, await apiError(response, '추가에 실패했습니다.'), true);
-        return;
+      try {
+        setStatus(workspaceStatus, '추가 중…');
+        const response = await authFetch('/api/notes', {
+          method: 'POST',
+          body: JSON.stringify({ title: title.value, body: body.value }),
+        });
+        if (!response.ok) {
+          setStatus(workspaceStatus, await apiError(response, '추가에 실패했습니다.'), true);
+          return;
+        }
+        title.value = '';
+        body.value = '';
+        setStatus(workspaceStatus, '추가했습니다.');
+        await loadNotes();
+      } catch (error) {
+        setStatus(workspaceStatus, error.message, true);
       }
-      title.value = '';
-      body.value = '';
-      setStatus(workspaceStatus, '추가했습니다.');
-      await loadNotes();
     });
 
-    supabase.auth.onAuthStateChange((_event, nextSession) => {
-      session = nextSession;
+    (async () => {
+      await restoreSession();
       renderAuth();
-      if (session) void loadNotes();
-    });
-
-    const { data: initial, error: initialError } = await supabase.auth.getSession();
-    if (initialError) setStatus(loginStatus, initialError.message, true);
-    session = initial.session;
-    renderAuth();
-    if (session) await loadNotes();
+      if (session) await loadNotes();
+    })();
   </script>
 </body>
 </html>

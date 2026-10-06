@@ -140,6 +140,28 @@ export async function runAttackChecks(config) {
   const listDenied = listResponse.status === 401
     && !Array.isArray(listBody) && !Array.isArray(listBody?.notes);
 
+  const manifestResponse = await fetch(new URL('/aleph.json', app), {
+    redirect: 'error', signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'application/json' },
+  });
+  const manifestBody = manifestResponse.ok ? await safeJson(manifestResponse) : null;
+  const manifestMatches = manifestBody?.step === 5
+    && manifestBody?.originalApiUrl === config.originalApiUrl;
+  const manifestRoutes = Array.isArray(manifestBody?.allowedRoutes)
+    && manifestBody.allowedRoutes.length > 0;
+
+  const screenResponse = await fetch(app, {
+    redirect: 'error', signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'text/html' },
+  });
+  const screenText = screenResponse.ok ? await screenResponse.text() : '';
+  const contentTypeOptions = screenResponse.headers.get('x-content-type-options') || '';
+  const contentSecurityPolicy = screenResponse.headers.get('content-security-policy') || '';
+  const screenHardened = contentTypeOptions.toLowerCase() === 'nosniff'
+    || Boolean(contentSecurityPolicy.trim());
+  const publicKeyAbsent = !/sb_publishable_[A-Za-z0-9_-]+/u.test(screenText)
+    && !/eyJ[A-Za-z0-9_-]{12,}\.eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8,}/u.test(screenText);
+
   const originResponse = await fetch(original, {
     redirect: 'error', signal: AbortSignal.timeout(10000),
     headers: { Accept: 'application/json' },
@@ -152,6 +174,18 @@ export async function runAttackChecks(config) {
     { attackId: 'anonymous_note_list_denied', expected: '무로그인 Vercel 자료 API는 자료 없이 401 거부',
       observed: listDenied ? '무로그인 /api/notes가 자료 없이 HTTP 401로 거부됨'
         : `무로그인 목록 거부 검증 실패 (HTTP ${listResponse.status})` },
+    { attackId: 'deployment_manifest_original_api', expected: '/aleph.json의 originalApiUrl이 제출 설정과 일치',
+      observed: manifestMatches ? '배포 /aleph.json의 step=5와 originalApiUrl이 제출 설정과 일치함'
+        : `배포 manifest 원본 주소 검증 실패 (HTTP ${manifestResponse.status})` },
+    { attackId: 'deployment_manifest_allowed_routes', expected: '/aleph.json의 allowedRoutes에 허용 경로가 하나 이상 있음',
+      observed: manifestRoutes ? `배포 /aleph.json allowedRoutes에 ${manifestBody.allowedRoutes.length}개 경로가 있음`
+        : '배포 /aleph.json allowedRoutes가 비어 있거나 없음' },
+    { attackId: 'first_screen_security_header', expected: '첫 화면 응답에 nosniff 또는 CSP 보안 헤더가 있음',
+      observed: screenHardened ? `첫 화면 보안 헤더 확인: ${contentTypeOptions || 'CSP'}`
+        : `첫 화면 보안 헤더 없음 (HTTP ${screenResponse.status})` },
+    { attackId: 'screen_public_key_absent', expected: '첫 화면 코드에 Supabase publishable/anon 키가 없음',
+      observed: publicKeyAbsent ? '첫 화면 코드에 Supabase 공개 키 패턴이 없음'
+        : '첫 화면 코드에서 Supabase 공개 키 패턴을 발견함' },
     { attackId: 'direct_origin_without_key_denied', expected: '원본 자료 HTTPS 경로는 키 없는 직접 요청을 거부',
       observed: originDenied ? `원본 자료 경로가 자료 없이 HTTP ${originResponse.status}로 거부됨`
         : `원본 자료 직접 요청 거부 검증 실패 (HTTP ${originResponse.status})` },

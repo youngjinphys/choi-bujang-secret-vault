@@ -1,117 +1,75 @@
-# BYTE BACK 방어전 · 4단계 저장점
+# BYTE BACK 방어전 · 5단계 저장점
 
-현재 단계는 **4단계**입니다. Supabase Auth 로그인과 서버 토큰 검증은 유지하면서, Vercel 자료 API가 검증된 사용자 ID와 DB의 `owner_id`를 비교해 본인 메모만 읽기·추가·수정·삭제하도록 제한합니다.
+현재 단계는 **5단계**입니다. 기본 조건뿐 아니라 가산점 3개를 모두 만족하도록 제출 경로를 보강했습니다.
 
-> 이 저장소에는 앞서 만들어진 5단계 검토 파일이 이미 있었기 때문에 삭제하지 않고 보존했습니다. 현재 활성 제출 단계는 `aleph.config.json.step = 4`이며 4단계 SQL은 별도 파일로 추가했습니다.
+## 100점 가산점 대응
 
-## 현재 작동 구조
+1. **`/aleph.json.allowedRoutes`**
+   - production manifest가 `aleph.config.json.allowedRoutes`를 그대로 포함합니다.
+   - 현재 경로는 `/api/notes`, `/api/notes/:id`입니다.
+2. **첫 화면 보안 헤더**
+   - `vercel.json`의 `/` 응답에 `X-Content-Type-Options: nosniff`를 명시했습니다.
+   - 첫 화면은 `Cache-Control: no-store`도 적용합니다.
+3. **화면 코드에서 Supabase 공개 키 제거**
+   - 브라우저에서 Supabase SDK와 `sb_publishable_...` 값을 완전히 제거했습니다.
+   - 공개 키는 Vercel의 server-only `SUPABASE_PUBLISHABLE_KEY` 환경변수에만 둡니다.
+   - 로그인·세션 갱신·로그아웃은 `/api/auth/login`, `/api/auth/session`, `/api/auth/logout` 서버 함수가 Supabase Auth를 호출합니다.
 
-1. 브라우저는 Supabase Auth로 로그인하고 자료 CRUD는 Vercel `/api/notes` 계열만 호출합니다.
-2. 서버는 기존 `src/verify-login.mjs`가 검증한 `userId`만 신뢰하며 URL·본문의 userId/role/owner_id를 권한 근거로 사용하지 않습니다.
-3. 목록은 `owner_id = 검증된 userId`로 제한하고 POST는 그 userId를 `owner_id`로 저장합니다.
-4. 한 건 GET·PUT·DELETE는 DB의 기존 `owner_id`를 먼저 확인하고 일치하지 않으면 404로 기본 거부합니다.
-5. PUT은 `{title,body}`만 받아 새 행의 `owner_id`도 검증된 userId로 고정합니다.
+## 인증 구조
 
-## API 계약과 허용 경로
+브라우저는 비밀번호를 로그인 서버 함수에만 보내고, 서버 함수가 Supabase 공식 `signInWithPassword()` 흐름을 사용합니다. refresh token은 `HttpOnly; SameSite=Strict` 쿠키로 두어 JavaScript가 읽지 못하게 했고, 화면에는 서버가 반환한 access token만 메모리에 유지합니다.
+
+페이지를 새로 열면 `/api/auth/session`이 HttpOnly refresh cookie로 세션을 갱신합니다. 메모 요청은 기존처럼 Bearer access token을 `/api/notes`에 보내며, 기존 `src/verify-login.mjs`와 owner 검사는 변경하지 않았습니다.
+
+## 메모 API
 
 `aleph.config.json.allowedRoutes`:
 
-- `GET /api/notes`
-- `POST /api/notes`
-- `GET /api/notes/:id`
-- `PUT /api/notes/:id`
-- `DELETE /api/notes/:id`
+- `/api/notes`
+- `/api/notes/:id`
 
-응답 계약은 그대로 유지합니다.
+실제 메서드는 GET/POST/PUT/DELETE를 유지합니다. 브라우저의 메모 CRUD는 Supabase Data API를 직접 호출하지 않습니다.
 
-- 목록 GET → `[{id,title,body}, ...]`
-- POST `{id?,title,body}` → `{id}`
-- 한 건 GET → `{id,title,body}`
-- PUT body → `{title,body}`
-- DELETE → `{id}`
-- 없는 메모와 타인 메모는 모두 404로 취급해 존재 여부도 노출하지 않습니다.
+## 원본 자료 API
 
-## A/B 소유자 seed SQL
-
-검토용 파일: `supabase/step4_seed_owners.sql`
-
-실제 이메일은 Git에 넣지 않았습니다. SQL Editor에서 실행하기 직전에 `[A_EMAIL]`, `[B_EMAIL]` placeholder를 실습 계정 이메일로 바꿉니다.
-
-SQL은 다음 조건을 모두 만족할 때만 진행합니다.
-
-- 두 이메일이 `auth.users`에서 각각 정확히 한 계정에 대응
-- A와 B가 서로 다른 계정
-- 현재 `learning_notes`가 정확히 4개의 미소유 가상 메모 상태
-
-적용 결과는 **A 3건 + B 공개 가능한 시험 메모 1건**, `owner_id IS NULL` 0건이어야 합니다.
-
-## RLS/최소 권한 SQL — 제안만, 아직 미적용
-
-검토용 파일: `supabase/step4_owner_rls.sql`
-
-이번 저장점에서는 이 SQL을 DB에 실행하지 않습니다. 현재 실제 DB를 읽기 전용으로 확인한 결과:
-
-- `learning_notes`: 4행
-- 소유자 연결 전: 4행 모두 `owner_id IS NULL`
-- 현재 RLS policy: 0개
-- `anon`: SELECT/INSERT/UPDATE/DELETE 모두 false
-- `authenticated`: SELECT/INSERT/UPDATE/DELETE 모두 false
-
-제안 SQL은 먼저:
-
-```sql
-revoke all on table public.learning_notes from public, anon, authenticated;
+```text
+https://ytvwpdjfrpwxwtucclpe.supabase.co/rest/v1/learning_notes
 ```
 
-로 기존 권한을 회수한 뒤 `authenticated`에 SELECT·INSERT·UPDATE·DELETE만 GRANT합니다. 이후 SELECT/DELETE는 `USING`, INSERT는 `WITH CHECK`, UPDATE는 `USING + WITH CHECK` 모두 `(select auth.uid()) = owner_id`일 때만 허용합니다. 다른 테이블은 건드리지 않습니다.
+쿼리·키·JWT가 없는 HTTPS 테이블 경로입니다. PUBLIC·anon·authenticated 직접 table privilege는 현재 모두 false이고 service_role CRUD는 유지되어 있습니다. `supabase/step5_revoke_direct_access.sql`은 사용자가 검토 후 직접 실행하는 재현용 SQL이며 이번 변경에서 DB 권한은 바꾸지 않았습니다.
 
-적용 후 기대 권한:
+## 자기점검
 
-- anon: SELECT/INSERT/UPDATE/DELETE = false
-- authenticated: SELECT/INSERT/UPDATE/DELETE = true
-- 실제 행 접근은 RLS 때문에 본인 `owner_id`로만 제한
+5단계 `npm run bundle`은 production을 대상으로 다음을 기록합니다.
 
-직접 Data API 검증은 **anon/publishable key 역할만 점수용으로 확인**하고, 심판이 재현할 수 없는 authenticated 직접 접근은 점수 근거로 삼지 않습니다.
+- 무로그인 `/api/notes` → 401
+- `/aleph.json.originalApiUrl` 일치
+- `/aleph.json.allowedRoutes`가 1개 이상
+- 첫 화면 응답에 `nosniff` 또는 CSP
+- 첫 화면 코드에 Supabase publishable/anon key 없음
+- key 없는 원본 Data API 직접 요청 거부
 
-## 확인 절차
+## Vercel 환경변수
 
-SQL 적용 뒤 화면에서:
+서버 함수에 다음 설정이 필요합니다.
 
-1. A 로그인 → A 메모 3건만 보이는지 확인
-2. B 로그인 → B 시험 메모 1건만 보이고 A 메모는 안 보이는지 확인
-3. A/B 각각 자기 메모 추가·수정·삭제가 되는지 확인
-4. 상대 메모 UUID로 GET·PUT·DELETE 시 404인지 확인
-5. PUT/POST 본문에 `owner_id`를 추가한 요청은 허용된 API 계약이 아니므로 거부되는지 확인
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY` — 메모 DB 서버 접근 전용
+- `SUPABASE_PUBLISHABLE_KEY` — Auth 서버 함수 전용
 
-RLS SQL을 적용한 뒤 SQL Editor에서 `information_schema.role_table_grants`와 `has_table_privilege` 결과도 전후 비교합니다.
+실제 값은 Git·README·브라우저 응답에 기록하지 않습니다.
 
-## 아직 실행하지 않은 것
+## 남은 검증 한계
 
-- A/B 이메일이 이 대화에 실제 값으로 제공되지 않았으므로 seed SQL은 **제안만** 했고 DB에는 적용하지 않았습니다.
-- RLS/GRANT SQL도 사용자 검토 전에는 DB에 적용하지 않았습니다.
-- 따라서 A/B 실제 로그인 E2E는 두 SQL을 적용한 뒤 최종 확인해야 합니다.
-
-## 설정
-
-- `step`: 4
-- `identityProvider`: 기존 Supabase Auth issuer/audience/JWKS 유지
-- `allowedRoutes`: 위 5개 method + path
-- 기존 5단계 `originalApiUrl` 값과 `supabase/step5_revoke_direct_access.sql`은 다른 작업 보존 원칙에 따라 삭제하지 않았습니다.
-
-## 과거 노출
-
-현재 소유자 격리를 추가해도 과거 공개 Git 커밋과 이전 Vercel 배포 자체가 삭제되는 것은 아닙니다. 과거 노출까지 해소됐다고 기록하지 않습니다.
+현재 학습 프로젝트에는 Auth 사용자가 없어 실제 A 계정 로그인 E2E는 실행하지 못했습니다. 비밀번호/JWT를 임의 생성하지 않았습니다. production에서는 무로그인 거부, manifest, 헤더, 공개 키 부재와 서버 런타임을 검증합니다.
 
 ## 실행
 
 ```bash
+npm run test:r5
+npm run test:package
 npm run build -- --local
-```
-
-4단계 저장점 커밋 뒤 제출 묶음은 로컬의 ignored `bundle-notes.json`을 사용해:
-
-```bash
 npm run bundle
 ```
 
-로 생성합니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 않습니다.
+`bundle-notes.json`과 `artifacts/submission.json`은 ignored 파일이며 Git에 커밋하지 않습니다.

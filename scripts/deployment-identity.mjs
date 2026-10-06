@@ -1,3 +1,5 @@
+import { validateAllowedRoutes, validateOriginalApiUrl } from './config-contract.mjs';
+
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const REPO = /^[A-Za-z0-9._-]{1,100}$/u;
 const SHA = /^[a-f0-9]{40}$/iu;
@@ -11,6 +13,16 @@ export function deploymentIdentity(env, config) {
   const step = config?.step;
   const stepOneMarkerInvalid = step === 1 && (typeof config.sampleMarker !== 'string'
     || !/^[A-Z0-9_]{1,80}$/u.test(config.sampleMarker));
+
+  let allowedRoutes;
+  let originalApiUrl;
+  try {
+    allowedRoutes = validateAllowedRoutes(config);
+    originalApiUrl = validateOriginalApiUrl(config);
+  } catch {
+    throw new Error('배포 단계 설정의 허용 경로 또는 원본 자료 API 주소를 확인하세요.');
+  }
+
   if (env.VERCEL_GIT_PROVIDER !== 'github' || !OWNER.test(owner || '')
       || !REPO.test(repo || '') || repo === '.' || repo === '..'
       || repo.toLowerCase().endsWith('.git') || !SHA.test(commit || '')
@@ -29,5 +41,7 @@ export function deploymentIdentity(env, config) {
     judgeIssuer: config.judgeIssuer,
   };
   if (step === 1) identity.sampleMarker = config.sampleMarker;
+  if (step >= 3) identity.allowedRoutes = allowedRoutes;
+  if (step >= 5) identity.originalApiUrl = originalApiUrl;
   return identity;
 }

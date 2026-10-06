@@ -4,6 +4,7 @@
   "functions": [],
   "allowedNew": [
     "api/ai.js",
+    "api/auth.js",
     "api/notes.js",
     "api/threat-intel.js"
   ]
