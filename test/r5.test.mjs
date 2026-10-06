@@ -173,6 +173,38 @@ test('step 5 attack check validates server denial and queryless original URL', a
 test('server note queries keep verified owner filtering', async () => {
   const source = await (await import('node:fs/promises')).readFile(
     new URL('../api/notes.js', import.meta.url), 'utf8');
-  assert.ok((source.match(/\.eq\('owner_id', identity\.userId\)/gu) ?? []).length >= 4);
+  assert.match(source, /data\.owner_id !== userId/u);
+  assert.match(source, /\.eq\('owner_id', identity\.userId\)/u);
   assert.match(source, /owner_id:\s*identity\.userId/u);
+});
+
+test('step 4 deployment identity is supported', () => {
+  const step4 = { step: 4, judgeIssuer: config.judgeIssuer, publicAppUrl: config.publicAppUrl };
+  assert.equal(deploymentIdentity(env, step4).step, 4);
+});
+
+test('step 4 attack checks keep anonymous requests denied', async () => {
+  const originalFetch = globalThis.fetch;
+  const step4 = { step: 4, publicAppUrl: 'https://student-defense.vercel.app' };
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+    const results = await runAttackChecks(step4);
+    assert.equal(results.length, 2);
+    assert.match(results[0].observed, /401/u);
+    assert.match(results[1].observed, /401/u);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('step 4 server API enforces verified owner boundaries', async () => {
+  const source = await (await import('node:fs/promises')).readFile(
+    new URL('../api/notes.js', import.meta.url), 'utf8');
+  assert.match(source, /data\.owner_id !== userId/u);
+  assert.match(source, /owner_id:\s*identity\.userId/u);
+  assert.match(source, /\.eq\('owner_id', identity\.userId\)/u);
+  assert.match(source, /new Set\(\['title', 'body'\]\)/u);
 });

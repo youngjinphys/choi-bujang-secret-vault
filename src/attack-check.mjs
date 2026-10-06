@@ -96,6 +96,33 @@ export async function runAttackChecks(config) {
     ];
   }
 
+  if (config.step === 4) {
+    const listResponse = await fetch(new URL('/api/notes', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+      headers: { Accept: 'application/json' },
+    });
+    const listBody = await safeJson(listResponse);
+    const listDenied = listResponse.status === 401
+      && !Array.isArray(listBody) && !Array.isArray(listBody?.notes);
+
+    const itemResponse = await fetch(new URL('/api/notes/00000000-0000-4000-8000-000000000000', app), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+      headers: { Accept: 'application/json' },
+    });
+    const itemBody = await safeJson(itemResponse);
+    const itemDenied = itemResponse.status === 401
+      && !itemBody?.title && !itemBody?.body;
+
+    return [
+      { attackId: 'anonymous_note_list_denied', expected: '4단계 무로그인 목록 GET은 자료 없이 401 거부',
+        observed: listDenied ? '무로그인 /api/notes가 자료 없이 HTTP 401로 거부됨'
+          : `무로그인 목록 거부 검증 실패 (HTTP ${listResponse.status})` },
+      { attackId: 'anonymous_note_item_denied', expected: '4단계 무로그인 한 건 GET은 자료 없이 401 거부',
+        observed: itemDenied ? '무로그인 /api/notes/:id가 자료 없이 HTTP 401로 거부됨'
+          : `무로그인 한 건 거부 검증 실패 (HTTP ${itemResponse.status})` },
+    ];
+  }
+
   if (config.step !== 5) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
 
   let original;

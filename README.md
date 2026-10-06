@@ -1,86 +1,117 @@
-# BYTE BACK 방어전 · 5단계 저장점
+# BYTE BACK 방어전 · 4단계 저장점
 
-현재 단계는 **5단계**입니다. 브라우저의 메모 읽기·추가·수정·삭제는 Vercel 서버 함수만 통과시키고, 원본 Supabase Data API 주소를 제출 설정에 기록합니다. 브라우저의 Supabase 사용은 로그인/Auth에만 남깁니다.
+현재 단계는 **4단계**입니다. Supabase Auth 로그인과 서버 토큰 검증은 유지하면서, Vercel 자료 API가 검증된 사용자 ID와 DB의 `owner_id`를 비교해 본인 메모만 읽기·추가·수정·삭제하도록 제한합니다.
 
-## 현재 구조
+> 이 저장소에는 앞서 만들어진 5단계 검토 파일이 이미 있었기 때문에 삭제하지 않고 보존했습니다. 현재 활성 제출 단계는 `aleph.config.json.step = 4`이며 4단계 SQL은 별도 파일로 추가했습니다.
 
-1. 브라우저 자료 CRUD는 `/api/notes`, `/api/notes/:id`만 호출합니다. `supabase.from(...)` 또는 `/rest/v1/learning_notes` 직접 자료 호출은 **없습니다**.
-2. Supabase Auth의 `signInWithPassword()`, `signOut()`, `getSession()`은 그대로 유지합니다.
-3. Vercel 서버 함수는 틀의 `src/verify-login.mjs`로 Bearer 토큰을 검증하고, 검증된 `userId`만 신뢰합니다.
-4. 목록·한 건 조회·수정·삭제는 모두 `owner_id = 검증된 userId` 조건을 적용하고 POST는 그 userId를 `owner_id`로 저장합니다.
-5. 서버는 `SUPABASE_SECRET_KEY`로 DB에 접근하며 이 값은 브라우저·응답·로그·Git에 넣지 않습니다.
+## 현재 작동 구조
 
-## 원본 자료 API
+1. 브라우저는 Supabase Auth로 로그인하고 자료 CRUD는 Vercel `/api/notes` 계열만 호출합니다.
+2. 서버는 기존 `src/verify-login.mjs`가 검증한 `userId`만 신뢰하며 URL·본문의 userId/role/owner_id를 권한 근거로 사용하지 않습니다.
+3. 목록은 `owner_id = 검증된 userId`로 제한하고 POST는 그 userId를 `owner_id`로 저장합니다.
+4. 한 건 GET·PUT·DELETE는 DB의 기존 `owner_id`를 먼저 확인하고 일치하지 않으면 404로 기본 거부합니다.
+5. PUT은 `{title,body}`만 받아 새 행의 `owner_id`도 검증된 userId로 고정합니다.
 
-`aleph.config.json.originalApiUrl`:
+## API 계약과 허용 경로
 
-```text
-https://ytvwpdjfrpwxwtucclpe.supabase.co/rest/v1/learning_notes
-```
+`aleph.config.json.allowedRoutes`:
 
-쿼리 문자열·키·토큰을 넣지 않은 원본 HTTPS 테이블 경로입니다. 심판은 별도로 anon/publishable key를 사용해 이 경로의 직접 접근이 차단되었는지 확인할 수 있습니다.
+- `GET /api/notes`
+- `POST /api/notes`
+- `GET /api/notes/:id`
+- `PUT /api/notes/:id`
+- `DELETE /api/notes/:id`
 
-## 브라우저 직접 자료 호출 점검
+응답 계약은 그대로 유지합니다.
 
-현재 `public/index.html`의 Supabase SDK 호출은 Auth뿐입니다. 메모 목록/추가/수정/삭제는 전부 같은 출처의 Vercel 서버 함수로 요청합니다. 따라서 이 항목 때문에 브라우저 자료 호출 코드는 변경하지 않았습니다.
+- 목록 GET → `[{id,title,body}, ...]`
+- POST `{id?,title,body}` → `{id}`
+- 한 건 GET → `{id,title,body}`
+- PUT body → `{title,body}`
+- DELETE → `{id}`
+- 없는 메모와 타인 메모는 모두 404로 취급해 존재 여부도 노출하지 않습니다.
 
-## A CRUD 확인 상태
+## A/B 소유자 seed SQL
 
-현재 Supabase `auth.users`는 **0명**이라 실제 A 계정 로그인 E2E는 실행할 수 없습니다. 실제 비밀번호나 JWT를 만들거나 요구하지 않았습니다.
+검토용 파일: `supabase/step4_seed_owners.sql`
 
-대신 확인한 항목:
-- 무로그인 Vercel 자료 API는 HTTP 401로 거부됩니다.
-- 서버 DB 역할은 SELECT/INSERT/UPDATE/DELETE 권한이 있어 CRUD 자체를 수행할 수 있습니다.
-- POST는 검증된 로그인 userId를 `owner_id`에 저장합니다.
-- 목록/GET/PUT/DELETE 모두 같은 검증된 userId의 `owner_id` 조건을 사용합니다.
+실제 이메일은 Git에 넣지 않았습니다. SQL Editor에서 실행하기 직전에 `[A_EMAIL]`, `[B_EMAIL]` placeholder를 실습 계정 이메일로 바꿉니다.
 
-실제 A 계정을 Supabase Dashboard의 Authentication → Users에서 만든 뒤에는 A 로그인 → 추가 → 수정 → 삭제 → 같은 id GET 404를 최종 E2E로 확인하세요.
+SQL은 다음 조건을 모두 만족할 때만 진행합니다.
 
-## 직접 DB 권한 회수 SQL
+- 두 이메일이 `auth.users`에서 각각 정확히 한 계정에 대응
+- A와 B가 서로 다른 계정
+- 현재 `learning_notes`가 정확히 4개의 미소유 가상 메모 상태
 
-검토용 SQL은 `supabase/step5_revoke_direct_access.sql`에 있습니다. **이번 커밋에서는 DB에 실행하지 않습니다.**
+적용 결과는 **A 3건 + B 공개 가능한 시험 메모 1건**, `owner_id IS NULL` 0건이어야 합니다.
 
-현재 학습 DB를 조회한 결과 `PUBLIC`·`anon`·`authenticated`의 `public.learning_notes` 직접 table grant는 이미 0건입니다. 따라서 SQL은 현재 상태를 재현·확인하는 idempotent 방어 설정입니다.
+## RLS/최소 권한 SQL — 제안만, 아직 미적용
 
-적용 전:
-- `information_schema.role_table_grants`로 세 역할의 권한을 확인합니다.
-- `has_table_privilege(...)`로 SELECT/INSERT/UPDATE/DELETE를 확인합니다.
+검토용 파일: `supabase/step4_owner_rls.sql`
 
-적용:
+이번 저장점에서는 이 SQL을 DB에 실행하지 않습니다. 현재 실제 DB를 읽기 전용으로 확인한 결과:
+
+- `learning_notes`: 4행
+- 소유자 연결 전: 4행 모두 `owner_id IS NULL`
+- 현재 RLS policy: 0개
+- `anon`: SELECT/INSERT/UPDATE/DELETE 모두 false
+- `authenticated`: SELECT/INSERT/UPDATE/DELETE 모두 false
+
+제안 SQL은 먼저:
+
 ```sql
-revoke all privileges on table public.learning_notes from public, anon, authenticated;
+revoke all on table public.learning_notes from public, anon, authenticated;
 ```
 
-적용 후:
-- 세 역할의 grant 조회는 0행이어야 합니다.
-- anon/authenticated의 SELECT/INSERT/UPDATE/DELETE는 모두 `false`여야 합니다.
-- `service_role`, RLS, 정책, 다른 테이블은 건드리지 않습니다.
+로 기존 권한을 회수한 뒤 `authenticated`에 SELECT·INSERT·UPDATE·DELETE만 GRANT합니다. 이후 SELECT/DELETE는 `USING`, INSERT는 `WITH CHECK`, UPDATE는 `USING + WITH CHECK` 모두 `(select auth.uid()) = owner_id`일 때만 허용합니다. 다른 테이블은 건드리지 않습니다.
+
+적용 후 기대 권한:
+
+- anon: SELECT/INSERT/UPDATE/DELETE = false
+- authenticated: SELECT/INSERT/UPDATE/DELETE = true
+- 실제 행 접근은 RLS 때문에 본인 `owner_id`로만 제한
+
+직접 Data API 검증은 **anon/publishable key 역할만 점수용으로 확인**하고, 심판이 재현할 수 없는 authenticated 직접 접근은 점수 근거로 삼지 않습니다.
+
+## 확인 절차
+
+SQL 적용 뒤 화면에서:
+
+1. A 로그인 → A 메모 3건만 보이는지 확인
+2. B 로그인 → B 시험 메모 1건만 보이고 A 메모는 안 보이는지 확인
+3. A/B 각각 자기 메모 추가·수정·삭제가 되는지 확인
+4. 상대 메모 UUID로 GET·PUT·DELETE 시 404인지 확인
+5. PUT/POST 본문에 `owner_id`를 추가한 요청은 허용된 API 계약이 아니므로 거부되는지 확인
+
+RLS SQL을 적용한 뒤 SQL Editor에서 `information_schema.role_table_grants`와 `has_table_privilege` 결과도 전후 비교합니다.
+
+## 아직 실행하지 않은 것
+
+- A/B 이메일이 이 대화에 실제 값으로 제공되지 않았으므로 seed SQL은 **제안만** 했고 DB에는 적용하지 않았습니다.
+- RLS/GRANT SQL도 사용자 검토 전에는 DB에 적용하지 않았습니다.
+- 따라서 A/B 실제 로그인 E2E는 두 SQL을 적용한 뒤 최종 확인해야 합니다.
 
 ## 설정
 
-- `step`: 5
+- `step`: 4
 - `identityProvider`: 기존 Supabase Auth issuer/audience/JWKS 유지
-- `allowedRoutes`: `/api/notes`, `/api/notes/:id`
-- `originalApiUrl`: 쿼리 없는 Supabase REST 원본 자료 경로
-- `restoreRoute`: 아직 없음
-
-## 남은 확인
-
-사용자가 SQL을 검토·실행한 뒤:
-1. A 계정으로 화면 CRUD가 계속 동작하는지 확인합니다.
-2. publishable/anon key로 `originalApiUrl`을 직접 요청했을 때 자료가 반환되지 않는지 확인합니다.
-3. 서버 함수 경유 A 요청은 정상이어야 하고, 다른 사용자 자료는 404로 취급되어야 합니다.
+- `allowedRoutes`: 위 5개 method + path
+- 기존 5단계 `originalApiUrl` 값과 `supabase/step5_revoke_direct_access.sql`은 다른 작업 보존 원칙에 따라 삭제하지 않았습니다.
 
 ## 과거 노출
 
-이전 공개 Git 커밋·Vercel 배포는 별도 이력입니다. 현재 권한을 회수해도 과거 공개 배포 자체가 자동 삭제된 것은 아니므로 과거 노출까지 해소됐다고 기록하지 않습니다.
+현재 소유자 격리를 추가해도 과거 공개 Git 커밋과 이전 Vercel 배포 자체가 삭제되는 것은 아닙니다. 과거 노출까지 해소됐다고 기록하지 않습니다.
 
 ## 실행
-
-로컬 정적 빌드:
 
 ```bash
 npm run build -- --local
 ```
 
-제출 묶음은 `bundle-notes.json`을 로컬에 만든 뒤 `npm run bundle`로 생성합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 않습니다.
+4단계 저장점 커밋 뒤 제출 묶음은 로컬의 ignored `bundle-notes.json`을 사용해:
+
+```bash
+npm run bundle
+```
+
+로 생성합니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 않습니다.
