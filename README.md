@@ -73,3 +73,17 @@ npm run bundle
 ```
 
 `bundle-notes.json`과 `artifacts/submission.json`은 ignored 파일이며 Git에 커밋하지 않습니다.
+
+## 보너스 xdr-01 · Wazuh 무차별 로그인 공격
+
+- 입력: 가상 Wazuh 경보 28건 (xdr/fixtures/brute-force.json). 원본 경보는 읽기 전용이며, read-alerts.mjs는 시각/출발 주소/계정/규칙 수준/비밀값을 제거한 설명 5개 필드만 추출합니다.
+- 패턴: xdr/brute-force/patterns.json, MITRE ATT&CK T1110/T1110.001/T1110.003. 반복 로그인 실패·다계정 password spraying을 기반으로 판정하며 번호나 정답을 직접 비교하지 않습니다.
+- 판정: xdr/brute-force/decide.mjs 의 decide(alert). 명확한 패턴은 block (0.85 이상), 애매한 인증 실패는 Jev 판단 경로의 alert (0.5 이상 0.85 미만), 정상은 record. Jev 키가 없거나 실패하면 alert (0.65)로 유지합니다. 수치는 운영상의 점수이며 검증된 실제 공격 확률은 아닙니다.
+- 선택형 Jev: 서버 전용 환경변수 JEV_API_KEY가 있을 때만 POST https://api.typesafe.ai/v1/systemone (jev-latest, Noul)을 호출합니다. 경보 원문/IP/계정/비밀번호를 제3자 API에 보내지 않습니다. Jev 응답은 약한 신호를 단독 차단으로 올리지 못합니다.
+- 후보 규칙: xdr/brute-force/deny-rules.json 은 sourceAddress + account 조합, 근거 경보 ID, startsAt/expiresAt (원 경보 시각부터 15분)의 오프라인 후보입니다. xdr/alerts.log 는 비밀값 없는 JSONL 경보 알림이며 재실행 시 같은 항목은 중복 추가하지 않습니다.
+- 판정기 연결: xdr/brute-force/ztna-gate.mjs 의 checkZTNAExtra()는 원래 판정이 allow 이고, 서버가 검증한 주소/계정/시각이 있는 경우에만 deny 후보를 추가 검사합니다. 기존 deny/step_up 은 그대로 유지합니다. 현재 docs/DECIDER_REQUEST.md 의 18개 요청 필드에는 검증된 출발 주소와 Wazuh 계정 매핑이 없고 src/decider.mjs도 전부 거부 시작점이므로, 본 보너스는 **격리된 오프라인 후보/어댑터**이지 운영 ZTNA 강제 차단이 아닙니다. 운영에 연결하려면 엔진이 검증한 네트워크 주소·사용자 매핑과 등록된 이유 코드를 제공해야 합니다.
+- 주의: 학습용 IP는 RFC 5737 문서 예시 대역이고, 경보 시각이 지난 시점의 후보는 자동 만료됩니다. 과거 경보를 재생해 현재 새 차단을 만들지 않습니다. 공유 IP만으로 광범위하게 차단하지 않습니다.
+
+재현 명령: npm run test:xdr && npm run xdr:run -- brute-force && npm run xdr:run -- brute-force
+
+실행 뒤 xdr/brute-force/result.json 의 counts, deny-rules.json 의 후보/만료, xdr/alerts.log 의 단일 JSONL 행을 확인하세요. 정상 이벤트는 record, 추가 확인 대상은 alert, 근거가 충분한 실패만 block 으로 나와야 합니다. 서버 검증 주소/계정이 없거나 규칙이 만료된 경우에는 추가 차단되지 않아야 합니다. 이 실행은 운영 심판 점수나 실제 네트워크 차단 증거가 아닙니다.

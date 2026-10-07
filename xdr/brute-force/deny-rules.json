@@ -1,0 +1,116 @@
+{
+  "schema": "aleph.xdr.ztna-candidates.v1",
+  "mode": "simulation_only",
+  "note": "Validated server-side IP and identity mapping are unavailable in aleph.decision.v1.",
+  "rules": [
+    {
+      "id": "xdr.t1110.4569b616d32966c2",
+      "sourceAddress": "203.0.113.15",
+      "account": "user04",
+      "startsAt": "2026-09-27T11:05:40+09:00",
+      "expiresAt": "2026-09-27T02:20:40.000Z",
+      "evidenceAlertIds": [
+        "bf-07"
+      ],
+      "pattern": "iterative_password_guessing",
+      "confidence": 0.9
+    },
+    {
+      "id": "xdr.t1110.555ec4f75eb7a252",
+      "sourceAddress": "203.0.113.40",
+      "account": "user06",
+      "startsAt": "2026-09-27T15:40:01+09:00",
+      "expiresAt": "2026-09-27T06:55:01.000Z",
+      "evidenceAlertIds": [
+        "bf-10"
+      ],
+      "pattern": "sustained_failed_login_streak",
+      "confidence": 0.88
+    },
+    {
+      "id": "xdr.t1110.65af4f79eb481bc6",
+      "sourceAddress": "203.0.113.21",
+      "account": "user03",
+      "startsAt": "2026-09-27T09:21:00+09:00",
+      "expiresAt": "2026-09-27T00:36:00.000Z",
+      "evidenceAlertIds": [
+        "bf-05"
+      ],
+      "pattern": "regular_multi_account_failures",
+      "confidence": 0.91
+    },
+    {
+      "id": "xdr.t1110.6bd093f1ed954068",
+      "sourceAddress": "203.0.113.10",
+      "account": "user01",
+      "startsAt": "2026-09-27T09:12:01+09:00",
+      "expiresAt": "2026-09-27T00:27:40.000Z",
+      "evidenceAlertIds": [
+        "bf-01",
+        "bf-02"
+      ],
+      "pattern": "rapid_source_login_failures",
+      "confidence": 0.97
+    },
+    {
+      "id": "xdr.t1110.7dff4100ae5a6618",
+      "sourceAddress": "198.51.100.8",
+      "account": "user06",
+      "startsAt": "2026-09-27T14:22:18+09:00",
+      "expiresAt": "2026-09-27T05:37:18.000Z",
+      "evidenceAlertIds": [
+        "bf-09"
+      ],
+      "pattern": "cross_account_password_spray",
+      "confidence": 0.97
+    },
+    {
+      "id": "xdr.t1110.9dd73170925c9d6c",
+      "sourceAddress": "198.51.100.44",
+      "account": "user03",
+      "startsAt": "2026-09-27T11:02:15+09:00",
+      "expiresAt": "2026-09-27T02:17:15.000Z",
+      "evidenceAlertIds": [
+        "bf-06"
+      ],
+      "pattern": "rapid_source_login_failures",
+      "confidence": 0.96
+    },
+    {
+      "id": "xdr.t1110.bf7f63623934f5a0",
+      "sourceAddress": "192.0.2.18",
+      "account": "user05",
+      "startsAt": "2026-09-27T13:10:02+09:00",
+      "expiresAt": "2026-09-27T04:25:02.000Z",
+      "evidenceAlertIds": [
+        "bf-08"
+      ],
+      "pattern": "sustained_failed_login_streak",
+      "confidence": 0.88
+    },
+    {
+      "id": "xdr.t1110.f7a3f29d57503377",
+      "sourceAddress": "198.51.100.20",
+      "account": "user02",
+      "startsAt": "2026-09-27T09:14:02+09:00",
+      "expiresAt": "2026-09-27T00:29:02.000Z",
+      "evidenceAlertIds": [
+        "bf-03"
+      ],
+      "pattern": "rapid_source_login_failures",
+      "confidence": 0.96
+    },
+    {
+      "id": "xdr.t1110.fa9f834b6936f24a",
+      "sourceAddress": "192.0.2.30",
+      "account": "user02",
+      "startsAt": "2026-09-27T09:20:11+09:00",
+      "expiresAt": "2026-09-27T00:35:11.000Z",
+      "evidenceAlertIds": [
+        "bf-04"
+      ],
+      "pattern": "rapid_source_login_failures",
+      "confidence": 0.96
+    }
+  ]
+}

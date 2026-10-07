@@ -21,7 +21,7 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
   if (!MODULE_KEYS.includes(moduleKey)) {
     throw new Error('moduleKey 가 없습니다. brute-force, web-injection, known-cve, persistence, privilege, exfiltration 중 하나를 넣습니다.');
   }
-  const fixture = JSON.parse(await readFile(join(root, 'xdr', 'fixtures', `${moduleKey}.json`), 'utf8'));
+  const fixture = JSON.parse(await readFile(join(root, 'xdr', 'fixtures', moduleKey + '.json'), 'utf8'));
   if (fixture?.schema !== 'aleph.xdr.fixture.v1' || fixture.moduleKey !== moduleKey || !Array.isArray(fixture.alerts)) {
     throw new Error('경보 묶음 형식이 아닙니다.');
   }
@@ -42,19 +42,24 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
         confidence = out.confidence;
         reason = out.reason;
       } else {
-        writeError(`형식 오류: ${alertId || '(id 없음)'}`);
+        writeError('형식 오류: ' + (alertId || '(id 없음)'));
       }
     } catch {
-      writeError(`형식 오류: ${alertId || '(id 없음)'}`);
+      writeError('형식 오류: ' + (alertId || '(id 없음)'));
     }
     decisions.push({ alertId, action, confidence, reason });
     counts[action] += 1;
   }
 
+  // Optional module-owned output hook. The existing SDP decider and its rules
+  // remain untouched; other XDR modules and the fake-runner test are unchanged.
+  if (moduleKey === 'brute-force' && typeof loaded.writeIntegrationArtifacts === 'function') {
+    await loaded.writeIntegrationArtifacts({ root, alerts: fixture.alerts, decisions });
+  }
   const result = { schema: 'aleph.xdr.result.v1', moduleKey, decisions, counts };
   const outDir = join(root, 'xdr', moduleKey);
   await mkdir(outDir, { recursive: true });
-  await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  await writeFile(join(outDir, 'result.json'), JSON.stringify(result, null, 2) + '\n', 'utf8');
   return result;
 }
 

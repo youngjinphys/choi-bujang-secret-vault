@@ -1,0 +1,66 @@
+{
+  "schema": "aleph.xdr.brute-force.patterns.v1",
+  "technique": "T1110",
+  "patterns": [
+    {
+      "name": "rapid_source_login_failures",
+      "condition": {
+        "minFailures": 30,
+        "maxMinutes": 3,
+        "minRuleLevel": 10,
+        "require": "동일 출발 주소의 3분 이내 로그인 실패 집계와 계정 확인"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 짧은 기간 집중된 인증 실패는 무차별 대입 탐지 신호입니다.",
+      "confidence": 0.96
+    },
+    {
+      "name": "cross_account_password_spray",
+      "condition": {
+        "minRuleLevel": 10,
+        "require": "동일 출발 주소에서 여러 계정에 같은 비밀번호를 반복 대입했다는 명시적 경보"
+      },
+      "evidence": "MITRE ATT&CK T1110.003 / DET0487: 여러 계정에 같은 비밀번호를 반복하는 시도는 password spraying입니다.",
+      "confidence": 0.97
+    },
+    {
+      "name": "regular_multi_account_failures",
+      "condition": {
+        "minAccounts": 15,
+        "minRuleLevel": 10,
+        "require": "15개 이상 계정에 규칙적인 간격으로 동일 주소의 로그인 실패"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1277: 다계정 대상 반복 인증 실패는 계정 풀 공격의 탐지 단서입니다.",
+      "confidence": 0.91
+    },
+    {
+      "name": "iterative_password_guessing",
+      "condition": {
+        "minFailures": 30,
+        "minRuleLevel": 10,
+        "require": "동일 계정에서 비밀번호를 조금씩 변경해 시도한 반복 실패"
+      },
+      "evidence": "MITRE ATT&CK T1110.001: 한 계정의 비밀번호를 체계적으로 반복 추측하는 수법입니다.",
+      "confidence": 0.9
+    },
+    {
+      "name": "sustained_failed_login_streak",
+      "condition": {
+        "minFailures": 50,
+        "minRuleLevel": 11,
+        "require": "50회 이상 동일 주소의 이어진 실패 또는 성공 없음이 명시된 경보"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 대량의 연속 인증 실패는 무차별 대입의 강한 신호입니다.",
+      "confidence": 0.88
+    },
+    {
+      "name": "review_login_failures",
+      "condition": {
+        "minFailures": 2,
+        "minRuleLevel": 5,
+        "require": "T1110 연관 실패는 있으나 자동 차단을 위한 독립적인 반복 근거가 부족"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463: 일부 인증 실패는 조사 단서지만 단독으로 공격을 입증하지 않습니다.",
+      "confidence": 0.65
+    }
+  ]
+}
