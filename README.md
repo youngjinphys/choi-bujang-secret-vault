@@ -87,3 +87,11 @@ npm run bundle
 재현 명령: npm run test:xdr && npm run xdr:run -- brute-force && npm run xdr:run -- brute-force
 
 실행 뒤 xdr/brute-force/result.json 의 counts, deny-rules.json 의 후보/만료, xdr/alerts.log 의 단일 JSONL 행을 확인하세요. 정상 이벤트는 record, 추가 확인 대상은 alert, 근거가 충분한 실패만 block 으로 나와야 합니다. 서버 검증 주소/계정이 없거나 규칙이 만료된 경우에는 추가 차단되지 않아야 합니다. 이 실행은 운영 심판 점수나 실제 네트워크 차단 증거가 아닙니다.
+
+### 보너스 xdr-01 · 차단 누락 점검
+
+이전 로컬 점검은 block 10 · alert 9 · record 9였으나, 심판은 명확한 공격 차단 부족이라고 보고했습니다. 비공개 정답이나 심판 입력은 확인하지 못했습니다. Wazuh \`rule.level\`은 실패 횟수가 아니라 심각도이며, 기존 분류기는 \`level >= 10\`과 소수의 한국어 설명 형태를 차단의 필수 조건으로 삼아 누락 가능성이 있었습니다.
+
+지금은 출발지·계정·실패 횟수·시간창·동일 비밀번호 다계정 시도·성공 여부를 함께 판정합니다. 반복 실패의 하위 유형에는 짧은 창에서 같은 계정의 실패 및 같은 주소의 반복 실패를 추가했습니다. Wazuh 원본과 안전한 5필드 투영 모두 수용하며, 별도 실패 횟수 필드도 처리합니다. 낮은 수준의 실패라도 조건이 충분하면 학습용 차단 후보로 처리합니다. 다만 적은 실패 횟수만으로 실제 운영 주소를 자동 차단하는 것은 오탐 위험이 있으므로, 현재 후보는 \`simulation_only\`이며 운영 차단은 연결하지 않습니다.
+
+검증: \`npm run test:xdr && npm run xdr:run -- brute-force && npm run xdr:run -- brute-force\`. XDR 결과는 \`xdr/brute-force/result.json\`, 근거 경보 번호와 만료 시각은 \`deny-rules.json\`에서 확인합니다. 정상 이벤트 차단 0건을 필수 조건으로 검사합니다. 본 결과는 별도로 수행한 자체 테스트이며 공식 심판 점수를 의미하지 않습니다.

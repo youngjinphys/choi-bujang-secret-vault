@@ -40,6 +40,18 @@
       "confidence": 0.91
     },
     {
+      "id": "xdr.t1110.66686d80a1bfecbc",
+      "sourceAddress": "192.0.2.51",
+      "account": "user04",
+      "startsAt": "2026-09-27T10:15:08+09:00",
+      "expiresAt": "2026-09-27T01:30:08.000Z",
+      "evidenceAlertIds": [
+        "bf-14"
+      ],
+      "pattern": "short_window_same_account_failures",
+      "confidence": 0.86
+    },
+    {
       "id": "xdr.t1110.6bd093f1ed954068",
       "sourceAddress": "203.0.113.10",
       "account": "user01",
@@ -87,6 +99,18 @@
       ],
       "pattern": "sustained_failed_login_streak",
       "confidence": 0.88
+    },
+    {
+      "id": "xdr.t1110.ee1221a1510a6513",
+      "sourceAddress": "198.51.100.52",
+      "account": "user07",
+      "startsAt": "2026-09-27T14:05:27+09:00",
+      "expiresAt": "2026-09-27T05:20:27.000Z",
+      "evidenceAlertIds": [
+        "bf-18"
+      ],
+      "pattern": "repeated_same_source_failures",
+      "confidence": 0.85
     },
     {
       "id": "xdr.t1110.f7a3f29d57503377",

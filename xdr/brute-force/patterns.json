@@ -5,10 +5,10 @@
     {
       "name": "rapid_source_login_failures",
       "condition": {
-        "minFailures": 30,
-        "maxMinutes": 3,
+        "minFailures": 20,
+        "maxMinutes": 10,
         "minRuleLevel": 10,
-        "require": "동일 출발 주소의 3분 이내 로그인 실패 집계와 계정 확인"
+        "require": "동일 출발지·계정의 짧은 기간(10분 이내) 20회 이상 인증 실패"
       },
       "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 짧은 기간 집중된 인증 실패는 무차별 대입 탐지 신호입니다.",
       "confidence": 0.96
@@ -51,6 +51,26 @@
       },
       "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 대량의 연속 인증 실패는 무차별 대입의 강한 신호입니다.",
       "confidence": 0.88
+    },
+    {
+      "name": "short_window_same_account_failures",
+      "condition": {
+        "minFailures": 5,
+        "maxMinutes": 10,
+        "require": "같은 계정의 10분 이내 최소 5회 실패와 T1110 분류, 성공 기록 부재"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 동일 계정의 단시간 집중 인증 실패는 상관 탐지 신호입니다.",
+      "confidence": 0.86
+    },
+    {
+      "name": "repeated_same_source_failures",
+      "condition": {
+        "minFailures": 8,
+        "minRuleLevel": 8,
+        "require": "같은 주소에서 최소 8회 로그인 실패와 T1110 분류, 성공 기록 부재"
+      },
+      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 동일 주소의 반복 인증 실패는 자동 추측의 탐지 단서입니다.",
+      "confidence": 0.85
     },
     {
       "name": "review_login_failures",

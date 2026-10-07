@@ -39,14 +39,14 @@ test('모든 MITRE T1110 패턴에 조건과 한 줄의 근거가 있음', () =>
   }
 });
 
-test('명확 10 · 애매 9 · 정상 9 분리, Jev 질의는 애매한 경보에만', async () => {
+test('명확 12 · 애매 7 · 정상 9 분리, Jev 질의는 애매한 경보에만', async () => {
   let jevCalls = 0;
   const decide = createDecider({ askJev: async () => { jevCalls += 1; return 0.99; } });
   const decisions = await Promise.all(fixture.alerts.map((alert) => decide(alert)));
   assert.deepEqual(decisions.reduce((acc, d) => {
     acc[d.action] += 1; return acc;
-  }, { block: 0, alert: 0, record: 0 }), { block: 10, alert: 9, record: 9 });
-  assert.equal(jevCalls, 9);
+  }, { block: 0, alert: 0, record: 0 }), { block: 12, alert: 7, record: 9 });
+  assert.equal(jevCalls, 7);
   assert.ok(decisions.every((d) => d.confidence >= 0 && d.confidence <= 1));
   assert.ok(decisions.filter((d) => d.action === 'alert').every((d) => d.confidence < 0.85));
   assert.ok(decisions.filter((d) => d.action === 'record').every((d) => d.confidence < 0.5));
@@ -69,7 +69,7 @@ test('ZTNA 추가 확인은 강한 경보만 후보로, 정상·공유 IP·만�
     alertId: a.id, ...(await decide(a)),
   })));
   const rules = buildDenyCandidates(fixture.alerts, decisions);
-  assert.equal(rules.length, 9); // bf-01/bf-02 share source and account.
+  assert.equal(rules.length, 11); // bf-01/bf-02 share source and account.
   assert.ok(rules.every((r) => r.evidenceAlertIds.length >= 1
     && Date.parse(r.expiresAt) > Date.parse(r.startsAt)));
   assert.ok(rules.every((r) => r.evidenceAlertIds.every((id) => {
@@ -112,4 +112,34 @@ test('ZTNA 추가 확인은 강한 경보만 후보로, 정상·공유 IP·만�
     },
     rules,
   }).action, 'pass');
+});
+test('Wazuh 수준이 낮아도 강한 반복 증거는 차단하고 정상 성공은 제외', async () => {
+  const decide = createDecider({ askJev: async () => null });
+  const lowLevel = structuredClone(fixture.alerts[0]);
+  lowLevel.rule.level = 6;
+  assert.equal((await decide(lowLevel)).action, 'block');
+
+  const english = {
+    id: 'synthetic-en',
+    timestamp: '2026-10-08T06:00:00+09:00',
+    rule: { level: 6, description: '45 failed login attempts from the same IP within 2 minutes', mitre: ['T1110'] },
+    data: { srcip: '192.0.2.110', srcuser: 'user99', failures: '45' },
+  };
+  assert.equal((await decide(english)).action, 'block');
+
+  const success = structuredClone(fixture.alerts[0]);
+  success.rule.description = '같은 주소에서 2분 안 로그인 실패 48건 뒤에 성공했습니다.';
+  assert.equal((await decide(success)).action, 'alert');
+
+  const weak = structuredClone(fixture.alerts[13]);
+  weak.rule.mitre = [];
+  assert.equal((await decide(weak)).action, 'alert');
+  assert.equal((await decide(fixture.alerts[21])).action, 'record');
+});
+
+test('readAlerts의 정규화된 5필드 경보도 명확한 대량 실패를 탐지', async () => {
+  const rows = await readAlerts();
+  const decide = createDecider({ askJev: async () => null });
+  assert.equal((await decide(rows[0])).action, 'block');
+  assert.equal((await decide(rows[19])).action, 'record');
 });
