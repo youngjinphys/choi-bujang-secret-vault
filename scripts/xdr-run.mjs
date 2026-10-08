@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -51,10 +51,23 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
     counts[action] += 1;
   }
 
-  // Optional module-owned output hook. The existing SDP decider and its rules
-  // remain untouched; other XDR modules and the fake-runner test are unchanged.
-  if (moduleKey === 'brute-force' && typeof loaded.writeIntegrationArtifacts === 'function') {
-    await loaded.writeIntegrationArtifacts({ root, alerts: fixture.alerts, decisions });
+  // The local runner, not the standalone judge module, owns file output.
+  if (moduleKey === 'brute-force') {
+    const gatePath = join(root, 'xdr', 'brute-force', 'ztna-gate.mjs');
+    let exists = true;
+    try {
+      await access(gatePath);
+    } catch (error) {
+      if (error?.code === 'ENOENT') exists = false;
+      else throw error;
+    }
+    if (exists) {
+      const gate = await import(pathToFileURL(gatePath).href);
+      if (typeof gate.writeIntegrationArtifacts !== 'function') {
+        throw new Error('brute-force 로컬 연동 함수를 찾지 못했습니다.');
+      }
+      await gate.writeIntegrationArtifacts({ root, alerts: fixture.alerts, decisions });
+    }
   }
   const result = { schema: 'aleph.xdr.result.v1', moduleKey, decisions, counts };
   const outDir = join(root, 'xdr', moduleKey);

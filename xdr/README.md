@@ -37,4 +37,4 @@ node scripts/xdr-run.mjs brute-force
 
 `npm run xdr:run -- brute-force` 도 같은 명령입니다. 실행기는 해당 경보마다 `decide` 를 부르고, 결과를 `xdr/<moduleKey>/result.json` 에 씁니다. 형식은 `aleph.xdr.result.v1` 이고, `decisions` 에는 경보 id·행동·확신도·이유가, `counts` 에는 `block`·`alert`·`record` 건수가 있습니다.
 
-반환 형식이 틀린 경보는 `record` 로 남고, 오류 한 줄이 출력됩니다. 실행기 자체는 네트워크를 쓰지 않습니다. 판정자는 격리된 환경에서 같은 명령을 다시 실행해 결과를 봅니다. 이미 커밋된 `result.json` 만으로 판정이 끝나지 않습니다.
+반환 형식이 틀린 경보는 `record` 로 남고, 오류 한 줄이 출력됩니다. 실행기 자체는 네트워크를 쓰지 않습니다. 심판은 인터넷·다른 파일 없이 decide.mjs 단독 모듈을 불러와 각 경보에 답하도록 실행합니다. 로컬 실행기의 파일 출력 기능은 판정기 파일 밖에 있어야 합니다. 이미 커밋된 `result.json` 만으로 판정이 끝나지 않습니다.

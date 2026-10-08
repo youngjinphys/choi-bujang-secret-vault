@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { readAlerts, extractAlert } from '../xdr/brute-force/read-alerts.mjs';
-import { createDecider } from '../xdr/brute-force/decide.mjs';
+import { decide } from '../xdr/brute-force/decide.mjs';
 import { buildDenyCandidates, checkZTNAExtra } from '../xdr/brute-force/ztna-gate.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,32 +41,27 @@ test('모든 MITRE T1110 패턴에 조건과 한 줄의 근거가 있음', () =>
   }
 });
 
-test('명확 12 · 애매 7 · 정상 9 분리, Jev 질의는 애매한 경보에만', async () => {
-  let jevCalls = 0;
-  const decide = createDecider({ askJev: async () => { jevCalls += 1; return 0.99; } });
-  const decisions = await Promise.all(fixture.alerts.map((alert) => decide(alert)));
+test('명확 12 · 애매 7 · 정상 9를 비동기 대기 없이 분리', () => {
+  const decisions = fixture.alerts.map((alert) => decide(alert));
   assert.deepEqual(decisions.reduce((acc, d) => {
     acc[d.action] += 1; return acc;
   }, { block: 0, alert: 0, record: 0 }), { block: 12, alert: 7, record: 9 });
-  assert.equal(jevCalls, 7);
+  assert.ok(decisions.every((result) => typeof result.then !== 'function'));
+  assert.ok(decisions.every((result) => Object.keys(result).sort().join(',') === 'action,confidence,reason'));
+  assert.ok(decisions.every((result) => !result.reason.includes('\n')));
   assert.ok(decisions.every((d) => d.confidence >= 0 && d.confidence <= 1));
   assert.ok(decisions.filter((d) => d.action === 'alert').every((d) => d.confidence < 0.85));
   assert.ok(decisions.filter((d) => d.action === 'record').every((d) => d.confidence < 0.5));
 });
 
-test('Jev 미응답 · API 오류는 alert 0.65, 정상은 record', async () => {
-  const missing = createDecider({ askJev: async () => null });
-  const failed = createDecider({ askJev: async () => { throw new Error('failure'); } });
-  for (const decide of [missing, failed]) {
-    assert.deepEqual(await decide(fixture.alerts[10]), {
-      action: 'alert', confidence: 0.65, reason: 'review_login_failures',
-    });
-    assert.equal((await decide(fixture.alerts[19])).action, 'record');
-  }
+test('Jev 네트워크 없이 애매하면 alert 0.65, 정상은 record', () => {
+  assert.deepEqual(decide(fixture.alerts[10]), {
+    action: 'alert', confidence: 0.65, reason: 'review_login_failures',
+  });
+  assert.equal(decide(fixture.alerts[19]).action, 'record');
 });
 
 test('ZTNA 추가 확인은 강한 경보만 후보로, 정상·공유 IP·만료시각은 통과', async () => {
-  const decide = createDecider({ askJev: async () => null });
   const decisions = await Promise.all(fixture.alerts.map(async (a) => ({
     alertId: a.id, ...(await decide(a)),
   })));
@@ -114,7 +111,6 @@ test('ZTNA 추가 확인은 강한 경보만 후보로, 정상·공유 IP·만�
   }).action, 'pass');
 });
 test('Wazuh 수준이 낮아도 강한 반복 증거는 차단하고 정상 성공은 제외', async () => {
-  const decide = createDecider({ askJev: async () => null });
   const lowLevel = structuredClone(fixture.alerts[0]);
   lowLevel.rule.level = 6;
   assert.equal((await decide(lowLevel)).action, 'block');
@@ -139,7 +135,39 @@ test('Wazuh 수준이 낮아도 강한 반복 증거는 차단하고 정상 성�
 
 test('readAlerts의 정규화된 5필드 경보도 명확한 대량 실패를 탐지', async () => {
   const rows = await readAlerts();
-  const decide = createDecider({ askJev: async () => null });
   assert.equal((await decide(rows[0])).action, 'block');
   assert.equal((await decide(rows[19])).action, 'record');
+});
+
+test('심판 격리: decide.mjs 단일 파일을 의존성 없이 로딩하고 동기 판정', async () => {
+  const sourcePath = join(root, 'xdr', 'brute-force', 'decide.mjs');
+  const source = await readFile(sourcePath, 'utf8');
+  assert.doesNotMatch(source, /^\s*(?:import\b|export\s+(?:\*|\{[^}]*\})\s+from\b)/mu);
+  assert.doesNotMatch(source, /\b(?:require\s*\(|fetch\s*\(|process\.|XMLHttpRequest\b|node:(?:fs|net|crypto|http|https))/u);
+  assert.equal((source.match(/\bexport\s+function\s+decide\s*\(/gu) || []).length, 1);
+  const temp = await mkdtemp(join(tmpdir(), 'aleph-xdr-isolated-'));
+  try {
+    await copyFile(sourcePath, join(temp, 'decide.mjs'));
+    const sample = [fixture.alerts[0], fixture.alerts[10], fixture.alerts[19]];
+    const script = [
+      'globalThis.fetch = () => { throw new Error("Network is disabled"); };',
+      'const mod = await import("./decide.mjs");',
+      'if (Object.keys(mod).join(",") !== "decide") throw new Error("Unexpected exports");',
+      'const input = ' + JSON.stringify(sample) + ';',
+      'const results = input.map((a) => mod.decide(a));',
+      'if (results.some((r) => r && typeof r.then === "function")) throw new Error("Async response");',
+      'process.stdout.write(JSON.stringify(results));',
+    ].join('\n');
+    const run = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: temp, encoding: 'utf8', timeout: 3000,
+      env: { PATH: process.env.PATH ?? '', JEV_API_KEY: 'dummy-no-network' },
+    });
+    assert.equal(run.status, 0, run.stderr || String(run.error));
+    assert.equal(run.stderr, '');
+    const results = JSON.parse(run.stdout);
+    assert.deepEqual(results.map((r) => r.action), ['block', 'alert', 'record']);
+    assert.ok(results.every((r) => Object.keys(r).sort().join(',') === 'action,confidence,reason'));
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 });

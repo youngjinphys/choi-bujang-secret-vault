@@ -78,8 +78,8 @@ npm run bundle
 
 - 입력: 가상 Wazuh 경보 28건 (xdr/fixtures/brute-force.json). 원본 경보는 읽기 전용이며, read-alerts.mjs는 시각/출발 주소/계정/규칙 수준/비밀값을 제거한 설명 5개 필드만 추출합니다.
 - 패턴: xdr/brute-force/patterns.json, MITRE ATT&CK T1110/T1110.001/T1110.003. 반복 로그인 실패·다계정 password spraying을 기반으로 판정하며 번호나 정답을 직접 비교하지 않습니다.
-- 판정: xdr/brute-force/decide.mjs 의 decide(alert). 명확한 패턴은 block (0.85 이상), 애매한 인증 실패는 Jev 판단 경로의 alert (0.5 이상 0.85 미만), 정상은 record. Jev 키가 없거나 실패하면 alert (0.65)로 유지합니다. 수치는 운영상의 점수이며 검증된 실제 공격 확률은 아닙니다.
-- 선택형 Jev: 서버 전용 환경변수 JEV_API_KEY가 있을 때만 POST https://api.typesafe.ai/v1/systemone (jev-latest, Noul)을 호출합니다. 경보 원문/IP/계정/비밀번호를 제3자 API에 보내지 않습니다. Jev 응답은 약한 신호를 단독 차단으로 올리지 못합니다.
+- 판정: xdr/brute-force/decide.mjs 의 decide(alert). 명확한 패턴은 block (0.85 이상), 애매한 인증 실패는 격리 환경용 보수적 alert (0.65), 정상은 record. 심판 판정 경로는 외부 호출 없이 alert (0.65)로 유지합니다. 수치는 운영상의 점수이며 검증된 실제 공격 확률은 아닙니다.
+- Jev 격리 제약: 심판의 단일 파일 실행 계약에 맞춰 decide.mjs에서 외부 호출을 제거했습니다. 애매한 경보는 외부 응답을 기다리지 않고 alert로 반환하며, 제3자 API 전송은 일어나지 않습니다. 향후 Jev 추가 검토는 격리 판정 파일 밖에서 별도로 수행해야 합니다.
 - 후보 규칙: xdr/brute-force/deny-rules.json 은 sourceAddress + account 조합, 근거 경보 ID, startsAt/expiresAt (원 경보 시각부터 15분)의 오프라인 후보입니다. xdr/alerts.log 는 비밀값 없는 JSONL 경보 알림이며 재실행 시 같은 항목은 중복 추가하지 않습니다.
 - 판정기 연결: xdr/brute-force/ztna-gate.mjs 의 checkZTNAExtra()는 원래 판정이 allow 이고, 서버가 검증한 주소/계정/시각이 있는 경우에만 deny 후보를 추가 검사합니다. 기존 deny/step_up 은 그대로 유지합니다. 현재 docs/DECIDER_REQUEST.md 의 18개 요청 필드에는 검증된 출발 주소와 Wazuh 계정 매핑이 없고 src/decider.mjs도 전부 거부 시작점이므로, 본 보너스는 **격리된 오프라인 후보/어댑터**이지 운영 ZTNA 강제 차단이 아닙니다. 운영에 연결하려면 엔진이 검증한 네트워크 주소·사용자 매핑과 등록된 이유 코드를 제공해야 합니다.
 - 주의: 학습용 IP는 RFC 5737 문서 예시 대역이고, 경보 시각이 지난 시점의 후보는 자동 만료됩니다. 과거 경보를 재생해 현재 새 차단을 만들지 않습니다. 공유 IP만으로 광범위하게 차단하지 않습니다.
@@ -95,3 +95,11 @@ npm run bundle
 지금은 출발지·계정·실패 횟수·시간창·동일 비밀번호 다계정 시도·성공 여부를 함께 판정합니다. 반복 실패의 하위 유형에는 짧은 창에서 같은 계정의 실패 및 같은 주소의 반복 실패를 추가했습니다. Wazuh 원본과 안전한 5필드 투영 모두 수용하며, 별도 실패 횟수 필드도 처리합니다. 낮은 수준의 실패라도 조건이 충분하면 학습용 차단 후보로 처리합니다. 다만 적은 실패 횟수만으로 실제 운영 주소를 자동 차단하는 것은 오탐 위험이 있으므로, 현재 후보는 \`simulation_only\`이며 운영 차단은 연결하지 않습니다.
 
 검증: \`npm run test:xdr && npm run xdr:run -- brute-force && npm run xdr:run -- brute-force\`. XDR 결과는 \`xdr/brute-force/result.json\`, 근거 경보 번호와 만료 시각은 \`deny-rules.json\`에서 확인합니다. 정상 이벤트 차단 0건을 필수 조건으로 검사합니다. 본 결과는 별도로 수행한 자체 테스트이며 공식 심판 점수를 의미하지 않습니다.
+
+### 보너스 xdr-01 · 심판 격리 호환 수정
+
+심판이 커밋 a3ff4d767aa1의 decide 실행을 거부한 원인은 decide.mjs의 전이 의존성이 node:fs/node:net/node:crypto를 사용하고, Jev 외부 호출 가능성이 있던 구조입니다. 이제 패턴 기준을 decide.mjs 상단의 상수로 고정했습니다. 이 파일은 decide(alert)만 export하며 import/파일 입출력/네트워크/환경변수를 전혀 사용하지 않고 즉시 응답합니다.
+
+기존 로컬 차단 후보/만료 시각/alert 로그 적재는 scripts/xdr-run.mjs가 ztna-gate.mjs를 **별도로** 로딩해 수행하므로 격리 판정 경로와 분리됩니다. 운영 ZTNA 판정기 기존 규칙은 수정하지 않았습니다.
+
+재현: npm run test:xdr && npm run xdr:run -- brute-force. test:xdr에는 decide.mjs 파일만 빈 임시 폴더로 복사하고, 네트워크를 비활성화한 하위 Node 프로세스에서 로딩·판정하는 검증을 추가했습니다. 공식 점수는 심판 재실행 후 확인해야 합니다.
