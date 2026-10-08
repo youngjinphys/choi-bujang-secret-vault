@@ -1,0 +1,120 @@
+{
+  "schema": "aleph.xdr.ztna-candidates.v1",
+  "moduleKey": "web-injection",
+  "mode": "simulation_only",
+  "note": "No server-verified source IP is available in the current ZTNA engine request contract.",
+  "rules": [
+    {
+      "id": "xdr.t1190.0f27e28ecdb76041",
+      "sourceAddress": "203.0.113.10",
+      "path": "/notes",
+      "startsAt": "2026-09-27T09:13:01+09:00",
+      "expiresAt": "2026-09-27T00:28:01.000Z",
+      "evidenceAlertIds": [
+        "wi-01"
+      ],
+      "patterns": [
+        "repeated_sql_injection"
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "xdr.t1190.1e8730e9bd19543f",
+      "sourceAddress": "192.0.2.21",
+      "path": "/files",
+      "startsAt": "2026-09-27T13:04:19+09:00",
+      "expiresAt": "2026-09-27T04:19:19.000Z",
+      "evidenceAlertIds": [
+        "wi-07"
+      ],
+      "patterns": [
+        "repeated_path_traversal"
+      ],
+      "confidence": 0.93
+    },
+    {
+      "id": "xdr.t1190.286346e22c007f83",
+      "sourceAddress": "198.51.100.15",
+      "path": "/files",
+      "startsAt": "2026-09-27T09:16:04+09:00",
+      "expiresAt": "2026-09-27T00:31:04.000Z",
+      "evidenceAlertIds": [
+        "wi-03"
+      ],
+      "patterns": [
+        "repeated_path_traversal"
+      ],
+      "confidence": 0.93
+    },
+    {
+      "id": "xdr.t1190.41f354855db7ad3d",
+      "sourceAddress": "203.0.113.10",
+      "path": "/search",
+      "startsAt": "2026-09-27T09:13:20+09:00",
+      "expiresAt": "2026-09-27T00:28:20.000Z",
+      "evidenceAlertIds": [
+        "wi-02"
+      ],
+      "patterns": [
+        "repeated_script_injection"
+      ],
+      "confidence": 0.94
+    },
+    {
+      "id": "xdr.t1190.cfdc7a26ab28d171",
+      "sourceAddress": "192.0.2.15",
+      "path": "/notes",
+      "startsAt": "2026-09-27T10:02:11+09:00",
+      "expiresAt": "2026-09-27T01:17:11.000Z",
+      "evidenceAlertIds": [
+        "wi-04"
+      ],
+      "patterns": [
+        "repeated_sql_injection"
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "xdr.t1190.e0902ff192606aa3",
+      "sourceAddress": "198.51.100.18",
+      "path": "/notes",
+      "startsAt": "2026-09-27T11:07:08+09:00",
+      "expiresAt": "2026-09-27T02:22:08.000Z",
+      "evidenceAlertIds": [
+        "wi-06"
+      ],
+      "patterns": [
+        "repeated_command_delimiter"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "xdr.t1190.ec2a084b4e71ccde",
+      "sourceAddress": "203.0.113.22",
+      "path": "/api/notes",
+      "startsAt": "2026-09-27T14:26:02+09:00",
+      "expiresAt": "2026-09-27T05:41:02.000Z",
+      "evidenceAlertIds": [
+        "wi-08"
+      ],
+      "patterns": [
+        "repeated_sql_injection"
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "xdr.t1190.fb1835796cdbd090",
+      "sourceAddress": "203.0.113.18",
+      "path": "/search",
+      "startsAt": "2026-09-27T10:18:33+09:00",
+      "expiresAt": "2026-09-27T01:33:33.000Z",
+      "evidenceAlertIds": [
+        "wi-05"
+      ],
+      "patterns": [
+        "repeated_sql_injection"
+      ],
+      "confidence": 0.95
+    }
+  ]
+}

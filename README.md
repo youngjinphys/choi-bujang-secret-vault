@@ -103,3 +103,16 @@ npm run bundle
 기존 로컬 차단 후보/만료 시각/alert 로그 적재는 scripts/xdr-run.mjs가 ztna-gate.mjs를 **별도로** 로딩해 수행하므로 격리 판정 경로와 분리됩니다. 운영 ZTNA 판정기 기존 규칙은 수정하지 않았습니다.
 
 재현: npm run test:xdr && npm run xdr:run -- brute-force. test:xdr에는 decide.mjs 파일만 빈 임시 폴더로 복사하고, 네트워크를 비활성화한 하위 Node 프로세스에서 로딩·판정하는 검증을 추가했습니다. 공식 점수는 심판 재실행 후 확인해야 합니다.
+
+
+## 보너스 xdr-02 · Wazuh 웹 주입 공격 판별 (MITRE ATT&CK T1190)
+
+- **입력:** `xdr/fixtures/web-injection.json` 가상 경보 26건. 원본은 수정하지 않습니다. `xdr/web-injection/read-alerts.mjs`는 시각·출발 IP·계정·규칙 수준·비밀값을 제거한 설명 5개 필드만 추출합니다. 원본 URL 쿼리와 비밀값은 출력하지 않습니다.
+- **패턴:** `xdr/web-injection/patterns.json`. MITRE ATT&CK T1190의 공개 웹 앱 악용과 DET0080의 비정상 요청 탐지에 기반해 반복 SQL 주입, 스크립트 삽입, 경로 이탈, 명령 구분자 입력을 구분합니다. 단일 `select` 수업명이나 검색용 따옴표는 차단 근거가 아닙니다. 패턴 문서: https://attack.mitre.org/techniques/T1190/
+- **격리 심판:** `xdr/web-injection/decide.mjs` **하나만** 가져가도 실행됩니다. 패턴은 파일 맨 위 상수로 내장했으며, 이 파일은 `decide(alert)`만 export합니다. 다른 파일/npm/Node 내장 모듈을 import하지 않고 파일·네트워크·환경변수도 접근하지 않습니다. 확신도 기준은 block 0.85+, alert 0.5+, record 그 아래입니다.
+- **부작용 분리:** `xdr/web-injection/respond.mjs`는 오프라인 차단 후보 `deny-rules.json`과 `xdr/alerts.log` JSONL 알림을 생성합니다. 차단 후보는 명확한 공격만 사용하며 `sourceAddress + path`로 범위를 좁히고 경보 발생 시각으로부터 15분 뒤 만료됩니다. IP 공유 위험을 줄이기 위해 같은 출발지에 정상 관측이 있으면 자동 후보를 제외합니다. 알림에는 경보 ID·시간·행동·패턴 이름만 넣고 원문 URL/IP/계정은 넣지 않습니다. 재실행해도 같은 알림은 중복 추가하지 않습니다.
+- **기존 판정기 우선:** `checkZTNAExtra`는 upstream 판정이 `allow`이고, **서버가 검증한** 출발 주소·경로·시각이 있을 때만 후보를 추가 검사합니다. 기존 `src/decider.mjs`와 그 판정·등록 규칙은 그대로 유지됩니다. 현재 `docs/DECIDER_REQUEST.md` v1에는 출발 IP가 없으므로 실제 ZTNA 서버 차단은 연동되지 않았고 후보 파일에는 `simulation_only`를 기록했습니다. 과거 실습 경보를 재실행해도 만료된 IP 차단을 되살리지 않습니다.
+
+재현: `npm run test:xdr && npm run xdr:run -- web-injection && npm run xdr:run -- web-injection`
+
+확인: `xdr/web-injection/result.json` 의 block/alert/record, `xdr/web-injection/deny-rules.json`의 근거 경보 번호·만료시각, `xdr/alerts.log`의 중복 없는 JSONL 행을 확인하세요. `npm run test:xdr`는 심판처럼 `decide.mjs` 파일 **하나만 빈 임시 폴더에 복사**해 오프라인으로 실행하는 테스트를 포함합니다. 자체 시험은 공식 심판 채점이 아닙니다.

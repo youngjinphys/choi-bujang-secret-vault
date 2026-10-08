@@ -1,0 +1,167 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "web-injection",
+  "decisions": [
+    {
+      "alertId": "wi-01",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "repeated_sql_injection"
+    },
+    {
+      "alertId": "wi-02",
+      "action": "block",
+      "confidence": 0.94,
+      "reason": "repeated_script_injection"
+    },
+    {
+      "alertId": "wi-03",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_path_traversal"
+    },
+    {
+      "alertId": "wi-04",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "repeated_sql_injection"
+    },
+    {
+      "alertId": "wi-05",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "repeated_sql_injection"
+    },
+    {
+      "alertId": "wi-06",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "repeated_command_delimiter"
+    },
+    {
+      "alertId": "wi-07",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_path_traversal"
+    },
+    {
+      "alertId": "wi-08",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "repeated_sql_injection"
+    },
+    {
+      "alertId": "wi-09",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-10",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-11",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-12",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-13",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-14",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-15",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-16",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-17",
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_suspicious_web_input"
+    },
+    {
+      "alertId": "wi-18",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-19",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-20",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-21",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-22",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-23",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-24",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-25",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    },
+    {
+      "alertId": "wi-26",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_t1190_pattern"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 9,
+    "record": 9
+  }
+}

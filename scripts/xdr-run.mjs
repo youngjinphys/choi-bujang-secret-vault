@@ -69,6 +69,15 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
       await gate.writeIntegrationArtifacts({ root, alerts: fixture.alerts, decisions });
     }
   }
+  if (moduleKey === 'web-injection') {
+    // The judge imports only decide.mjs. All I/O and ZTNA candidate emission
+    // must happen here, in the local runner, via an independent module.
+    const responseModule = await import(pathToFileURL(join(root, 'xdr', 'web-injection', 'respond.mjs')).href);
+    if (typeof responseModule.respondToDecisions !== 'function') {
+      throw new Error('web-injection 로컬 연동 함수를 찾지 못했습니다.');
+    }
+    await responseModule.respondToDecisions({ root, alerts: fixture.alerts, decisions });
+  }
   const result = { schema: 'aleph.xdr.result.v1', moduleKey, decisions, counts };
   const outDir = join(root, 'xdr', moduleKey);
   await mkdir(outDir, { recursive: true });
