@@ -68,6 +68,18 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
       }
       await gate.writeIntegrationArtifacts({ root, alerts: fixture.alerts, decisions });
     }
+    // File output belongs to respond.mjs, never to the isolated judge.
+    const respondPath = join(root, 'xdr', 'brute-force', 'respond.mjs');
+    let present = true;
+    try { await access(respondPath); } catch (error) {
+      if (error?.code === 'ENOENT') present = false;
+      else throw error;
+    }
+    if (present) {
+      const responder = await import(pathToFileURL(respondPath).href);
+      if (typeof responder.respond !== 'function') throw new Error('respond 함수를 찾지 못했습니다.');
+      await responder.respond({ root, alerts: fixture.alerts, decisions });
+    }
   }
   if (moduleKey === 'web-injection') {
     // The judge imports only decide.mjs. All I/O and ZTNA candidate emission

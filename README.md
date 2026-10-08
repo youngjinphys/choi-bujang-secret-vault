@@ -116,3 +116,11 @@ npm run bundle
 재현: `npm run test:xdr && npm run xdr:run -- web-injection && npm run xdr:run -- web-injection`
 
 확인: `xdr/web-injection/result.json` 의 block/alert/record, `xdr/web-injection/deny-rules.json`의 근거 경보 번호·만료시각, `xdr/alerts.log`의 중복 없는 JSONL 행을 확인하세요. `npm run test:xdr`는 심판처럼 `decide.mjs` 파일 **하나만 빈 임시 폴더에 복사**해 오프라인으로 실행하는 테스트를 포함합니다. 자체 시험은 공식 심판 채점이 아닙니다.
+
+### 보너스 xdr-01 · 애매한 시도와 respond 책임 분리
+
+최신 재검토에서 10분간 같은 계정 실패 5건과 불규칙한 출발지 실패 8건을 높은 확신으로 자동 차단한 점이 오탐 위험으로 확인됐습니다. 특정 경보 ID를 예외 처리하지 않고, 이 두 약한 패턴은 자동 차단 기준에서 제거했습니다. 근거가 충분한 집중 실패/다계정 password spraying만 block, 애매한 인증 실패는 **alert (0.65)**, 정상은 record로 판정합니다.
+
+심판 격리 제약에 맞춰 \`decide.mjs\`는 파일/환경변수/네트워크 접근 없이 동기적으로 행동·확신도·근거만 반환합니다. **\`respond.mjs\`는 \`xdr/alerts.log\`의 알림 전담**으로, 애매한 경보의 \`alert\`만 기록합니다. \`ztna-gate.mjs\`는 별도 \`deny-rules.json\`의 만료되는 차단 후보만 생성합니다. 재실행 시 해당 모듈의 잘못된 옛 \`block\` 알림과 중복은 현재 데이터에 맞춰 재구성하되 다른 XDR 모듈의 로그는 보존합니다. 원본 Wazuh 경보와 \`src/decider.mjs\`는 변경하지 않습니다.
+
+재현: \`npm run test:xdr && npm run xdr:run -- brute-force && npm run xdr:run -- brute-force\`. 위 분류 건수는 공개된 학습용 28건에 대한 로컬 검증 결과이고 비공개 심판 정답을 확인한 결과는 아닙니다.

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { extractAlert } from './read-alerts.mjs';
 import { matchStrongPattern } from './match.mjs';
@@ -81,35 +81,4 @@ export async function writeIntegrationArtifacts({ root, alerts, decisions }) {
     rules: candidates,
   }, null, 2) + '\n', 'utf8');
 
-  const logPath = join(root, 'xdr', 'alerts.log');
-  let existing = '';
-  try { existing = await readFile(logPath, 'utf8'); } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-  const logged = new Set();
-  for (const line of existing.split(/\r?\n/u)) {
-    if (!line.trim()) continue;
-    try {
-      const item = JSON.parse(line);
-      if (item.moduleKey === 'brute-force') {
-        logged.add(item.alertId + '\0' + item.action);
-      }
-    } catch { /* Preserve existing log lines without trusting their content. */ }
-  }
-  const added = [];
-  for (let i = 0; i < alerts.length; i += 1) {
-    const choice = decisions[i];
-    if (!['block', 'alert'].includes(choice.action) || choice.alertId !== alerts[i]?.id) continue;
-    if (!/^[a-z][a-z0-9_]{0,63}$/u.test(choice.reason)) continue;
-    const row = extractAlert(alerts[i]);
-    const key = choice.alertId + '\0' + choice.action;
-    if (!row.at || logged.has(key)) continue;
-    logged.add(key);
-    // No raw message, IP, username, password or token goes into the audit log.
-    added.push(JSON.stringify({
-      at: row.at, moduleKey: 'brute-force', alertId: choice.alertId,
-      action: choice.action, reason: choice.reason,
-    }));
-  }
-  if (added.length) await appendFile(logPath, added.join('\n') + '\n', 'utf8');
 }

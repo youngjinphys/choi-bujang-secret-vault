@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { readAlerts, extractAlert } from '../xdr/brute-force/read-alerts.mjs';
 import { decide } from '../xdr/brute-force/decide.mjs';
+import { matchStrongPattern } from '../xdr/brute-force/match.mjs';
+import { respond } from '../xdr/brute-force/respond.mjs';
 import { buildDenyCandidates, checkZTNAExtra } from '../xdr/brute-force/ztna-gate.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,11 +43,11 @@ test('모든 MITRE T1110 패턴에 조건과 한 줄의 근거가 있음', () =>
   }
 });
 
-test('명확 12 · 애매 7 · 정상 9를 비동기 대기 없이 분리', () => {
+test('명확 10 · 애매 9 · 정상 9를 비동기 대기 없이 분리', () => {
   const decisions = fixture.alerts.map((alert) => decide(alert));
   assert.deepEqual(decisions.reduce((acc, d) => {
     acc[d.action] += 1; return acc;
-  }, { block: 0, alert: 0, record: 0 }), { block: 12, alert: 7, record: 9 });
+  }, { block: 0, alert: 0, record: 0 }), { block: 10, alert: 9, record: 9 });
   assert.ok(decisions.every((result) => typeof result.then !== 'function'));
   assert.ok(decisions.every((result) => Object.keys(result).sort().join(',') === 'action,confidence,reason'));
   assert.ok(decisions.every((result) => !result.reason.includes('\n')));
@@ -66,7 +68,7 @@ test('ZTNA 추가 확인은 강한 경보만 후보로, 정상·공유 IP·만�
     alertId: a.id, ...(await decide(a)),
   })));
   const rules = buildDenyCandidates(fixture.alerts, decisions);
-  assert.equal(rules.length, 11); // bf-01/bf-02 share source and account.
+  assert.equal(rules.length, 9); // bf-01/bf-02 share source and account.
   assert.ok(rules.every((r) => r.evidenceAlertIds.length >= 1
     && Date.parse(r.expiresAt) > Date.parse(r.startsAt)));
   assert.ok(rules.every((r) => r.evidenceAlertIds.every((id) => {
@@ -170,4 +172,56 @@ test('심판 격리: decide.mjs 단일 파일을 의존성 없이 로딩하고 �
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
+});
+
+test('약한 단시간 실패/불규칙한 출발지 실패는 차단하지 않고 alert로 분류', () => {
+  for (const id of ['bf-14', 'bf-18']) {
+    const alert = fixture.alerts.find(item => item.id === id);
+    assert.equal(decide(alert).action, 'alert', id);
+    assert.equal(matchStrongPattern(alert), null, id);
+  }
+  for (const alert of fixture.alerts) {
+    assert.equal(decide(alert).action === 'block', Boolean(matchStrongPattern(alert)), alert.id);
+  }
+});
+
+test('respond가 alert만 기록하고 과거 block을 제거하며 재실행에 중복되지 않음', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'aleph-xdr-respond-'));
+  try {
+    await mkdir(join(tmp, 'xdr'), { recursive: true });
+    const log = join(tmp, 'xdr', 'alerts.log');
+    const unrelated = JSON.stringify({ moduleKey: 'web-injection', alertId: 'unrelated-01', action: 'alert' });
+    const legacy = JSON.stringify({ moduleKey: 'brute-force', alertId: 'bf-14', action: 'block' });
+    await writeFile(log, [unrelated, legacy].join('\n') + '\n');
+    const decisions = fixture.alerts.map(alert => ({ alertId: alert.id, ...decide(alert) }));
+    const first = await respond({ root: tmp, alerts: fixture.alerts, decisions });
+    assert.equal(first.written, 9);
+    assert.equal(first.preservedOther, 1);
+    const once = await readFile(log, 'utf8');
+    const rows = once.trim().split('\n').map(JSON.parse);
+    assert.equal(rows.length, 10);
+    assert.deepEqual(rows[0], JSON.parse(unrelated));
+    const current = rows.filter(row => row.moduleKey === 'brute-force');
+    assert.equal(current.length, 9);
+    assert.ok(current.every(row => row.action === 'alert'));
+    assert.ok(current.some(row => row.alertId === 'bf-14'));
+    assert.ok(current.some(row => row.alertId === 'bf-18'));
+    assert.ok(current.every(row => !('sourceAddress' in row) && !('account' in row)));
+    await respond({ root: tmp, alerts: fixture.alerts, decisions });
+    assert.equal(await readFile(log, 'utf8'), once);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Wazuh 일부 식별 정보가 누락된 모호한 실패는 alert, 정상 성공은 record', () => {
+  const ambiguous = structuredClone(fixture.alerts[13]);
+  delete ambiguous.timestamp;
+  delete ambiguous.data.srcip;
+  delete ambiguous.data.srcuser;
+  assert.equal(decide(ambiguous).action, 'alert');
+  assert.equal(matchStrongPattern(ambiguous), null);
+  const normal = structuredClone(fixture.alerts[19]);
+  delete normal.timestamp;
+  assert.equal(decide(normal).action, 'record');
 });

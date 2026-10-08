@@ -82,9 +82,9 @@
     },
     {
       "alertId": "bf-14",
-      "action": "block",
-      "confidence": 0.86,
-      "reason": "short_window_same_account_failures"
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_login_failures"
     },
     {
       "alertId": "bf-15",
@@ -106,9 +106,9 @@
     },
     {
       "alertId": "bf-18",
-      "action": "block",
-      "confidence": 0.85,
-      "reason": "repeated_same_source_failures"
+      "action": "alert",
+      "confidence": 0.65,
+      "reason": "review_login_failures"
     },
     {
       "alertId": "bf-19",
@@ -172,8 +172,8 @@
     }
   ],
   "counts": {
-    "block": 12,
-    "alert": 7,
+    "block": 10,
+    "alert": 9,
     "record": 9
   }
 }

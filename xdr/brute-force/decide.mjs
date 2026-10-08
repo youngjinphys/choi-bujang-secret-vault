@@ -6,8 +6,7 @@ const PATTERNS = Object.freeze([
   { name: 'regular_multi_account_failures', condition: { minAccounts: 15, minRuleLevel: 10 }, confidence: 0.91 },
   { name: 'iterative_password_guessing', condition: { minFailures: 30, minRuleLevel: 10 }, confidence: 0.90 },
   { name: 'sustained_failed_login_streak', condition: { minFailures: 50, minRuleLevel: 11 }, confidence: 0.88 },
-  { name: 'short_window_same_account_failures', condition: { minFailures: 5, maxMinutes: 10 }, confidence: 0.86 },
-  { name: 'repeated_same_source_failures', condition: { minFailures: 8, minRuleLevel: 8 }, confidence: 0.85 },
+
   { name: 'review_login_failures', condition: { minFailures: 2, minRuleLevel: 5 }, confidence: 0.65 },
 ]);
 
@@ -137,12 +136,7 @@ function strongPattern(alert, row) {
         matched = count >= p.minFailures && (streak || noSuccess)
           && (tagged || row.ruleLevel >= p.minRuleLevel);
         break;
-      case 'short_window_same_account_failures':
-        matched = count >= p.minFailures && shortWindow && sameAccount && tagged;
-        break;
-      case 'repeated_same_source_failures':
-        matched = count >= p.minFailures && sameSource && tagged && row.ruleLevel >= p.minRuleLevel;
-        break;
+
       default:
         break;
     }
@@ -162,8 +156,9 @@ export function decide(alert) {
     return { action: 'block', confidence: strong.confidence, reason: strong.name };
   }
   const review = PATTERNS[PATTERNS.length - 1];
-  if (row.at && row.sourceAddress && row.account && row.ruleLevel !== null
-    && (hasT1110(alert) || row.ruleLevel >= review.condition.minRuleLevel)
+  // Missing IP/account/timestamp prevents automatic blocking, but a genuine
+  // failed-login signal must still be surfaced for human review.
+  if ((hasT1110(alert) || (row.ruleLevel !== null && row.ruleLevel >= review.condition.minRuleLevel))
     && hasFailedAuthentication(row.description)) {
     // No external AI response is available inside the judge. Fail open to
     // human alerting, never to automated address denial.

@@ -104,10 +104,6 @@ export function matchStrongPattern(alert) {
       && iterative && (tagged || row.ruleLevel >= p.condition.minRuleLevel),
     sustained_failed_login_streak: (p) => count >= p.condition.minFailures
       && (streak || noSuccess) && (tagged || row.ruleLevel >= p.condition.minRuleLevel),
-    short_window_same_account_failures: (p) => count >= p.condition.minFailures
-      && shortWindow && sameAccount && tagged,
-    repeated_same_source_failures: (p) => count >= p.condition.minFailures
-      && sameSource && tagged && row.ruleLevel >= p.condition.minRuleLevel,
   };
   for (const pattern of document.patterns) {
     const test = matches[pattern.name];
@@ -119,8 +115,8 @@ export function matchStrongPattern(alert) {
 export function isSuspiciousFailure(alert) {
   const row = rowOf(alert);
   const review = patternByName.get('review_login_failures');
-  return Boolean(review && row.at && row.sourceAddress && row.account
-    && (hasT1110(alert) || row.ruleLevel >= review.condition.minRuleLevel)
+  return Boolean(review
+    && (hasT1110(alert) || (row.ruleLevel !== null && row.ruleLevel >= review.condition.minRuleLevel))
     && isFailureDescription(row.description));
 }
 

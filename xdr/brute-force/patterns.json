@@ -53,26 +53,6 @@
       "confidence": 0.88
     },
     {
-      "name": "short_window_same_account_failures",
-      "condition": {
-        "minFailures": 5,
-        "maxMinutes": 10,
-        "require": "같은 계정의 10분 이내 최소 5회 실패와 T1110 분류, 성공 기록 부재"
-      },
-      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 동일 계정의 단시간 집중 인증 실패는 상관 탐지 신호입니다.",
-      "confidence": 0.86
-    },
-    {
-      "name": "repeated_same_source_failures",
-      "condition": {
-        "minFailures": 8,
-        "minRuleLevel": 8,
-        "require": "같은 주소에서 최소 8회 로그인 실패와 T1110 분류, 성공 기록 부재"
-      },
-      "evidence": "MITRE ATT&CK T1110 / DET0463 AN1278: 동일 주소의 반복 인증 실패는 자동 추측의 탐지 단서입니다.",
-      "confidence": 0.85
-    },
-    {
       "name": "review_login_failures",
       "condition": {
         "minFailures": 2,
